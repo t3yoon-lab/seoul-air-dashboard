@@ -633,6 +633,7 @@ h1 {
   display: grid;
   grid-template-columns: minmax(0, 0.95fr) minmax(360px, 1.05fr);
   gap: 24px;
+  align-items: start;
   margin-top: 24px;
   animation: fadeUp 720ms var(--ease-out) 120ms both;
 }
@@ -650,9 +651,12 @@ h1 {
   grid-auto-columns: minmax(34px, 1fr);
   align-items: end;
   gap: 10px;
-  min-height: 260px;
-  padding: 24px;
+  min-height: 220px;
+  padding: 24px 24px 20px;
   overflow-x: auto;
+  background:
+    linear-gradient(to top, rgba(0, 0, 0, 0.06) 1px, transparent 1px) 0 24px / 100% 48px no-repeat,
+    linear-gradient(to top, rgba(0, 0, 0, 0.04) 1px, transparent 1px) 0 96px / 100% 48px no-repeat;
 }
 
 .hour-bar {
@@ -660,7 +664,7 @@ h1 {
   grid-template-rows: 1fr auto auto;
   align-items: end;
   min-width: 34px;
-  height: 212px;
+  height: 168px;
   border: 0;
   background: transparent;
   color: var(--color-text-muted);
@@ -760,6 +764,8 @@ h1 {
   align-items: center;
   gap: 6px;
   margin-left: auto;
+  max-width: 220px;
+  overflow: hidden;
 }
 
 .forecast-dots button {
@@ -835,9 +841,10 @@ input[type="search"]:focus {
 
 .life-index-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(132px, 1fr));
   gap: 12px;
   padding: 24px;
+  overflow-x: auto;
 }
 
 .life-card {
@@ -857,11 +864,13 @@ input[type="search"]:focus {
 
 .life-card h4 {
   margin: 0;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 650;
+  white-space: nowrap;
 }
 
 .life-score {
+  flex: 0 0 auto;
   color: var(--accent);
   font-size: 24px;
   font-weight: 700;
@@ -1079,12 +1088,12 @@ tr:hover td {
 
   .hourly-chart {
     grid-auto-columns: 40px;
-    min-height: 210px;
+    min-height: 188px;
     padding: 18px;
   }
 
   .hour-bar {
-    height: 160px;
+    height: 136px;
   }
 
   .forecast-visual {

@@ -60,6 +60,7 @@ let forecastFrames = [];
 let forecastFrameIndex = 0;
 let forecastTimer = null;
 let forecastPlaying = true;
+let forecastValidationId = 0;
 
 const els = {
   updatedAt: document.querySelector("#updatedAt"),
@@ -420,14 +421,21 @@ function buildHourlySeries(rows) {
 
 function renderForecastImage() {
   const item = forecastForActiveDay() || forecastForActiveDay(activeMetric === "pm25" ? "pm10" : "pm25");
-  forecastFrames = framesForForecast(item);
-  if (forecastFrameIndex >= forecastFrames.length) forecastFrameIndex = 0;
-  const frame = forecastFrames[forecastFrameIndex];
+  const sourceFrames = sourceFramesForForecast(item);
+  const hourlyFrames = expandForecastFramesHourly(sourceFrames);
+  setForecastFrames(sourceFrames);
   const grade = seoulGradeFromForecast(item);
   els.forecastIssuedAt.textContent = item?.dataTime || "예보 확인 중";
   els.forecastSummary.textContent = item
     ? `${item.informData} 서울 ${METRIC_META[activeMetric].label} 예보는 ${grade || "확인 중"}입니다. ${item.informOverall || ""}`
     : "예보통보 API에서 내일·모레 자료를 확인하지 못했습니다.";
+  validateForecastFrames(hourlyFrames, sourceFrames);
+}
+
+function setForecastFrames(frames) {
+  forecastFrames = frames;
+  if (forecastFrameIndex >= forecastFrames.length) forecastFrameIndex = 0;
+  const frame = forecastFrames[forecastFrameIndex];
   els.forecastImage.hidden = !frame;
   els.forecastPlaceholder.hidden = Boolean(frame);
   els.forecastFrameLabel.textContent = frame ? frame.label : "예측 영상 없음";
@@ -453,7 +461,7 @@ function imageForForecast(item) {
   return item.imageUrl1 || item.imageUrl2 || item.imageUrl3 || "";
 }
 
-function framesForForecast(item) {
+function sourceFramesForForecast(item) {
   if (!item) return [];
   const sourceFrames = activeMetric === "pm25"
     ? [
@@ -472,8 +480,7 @@ function framesForForecast(item) {
     ["추가 예측 2", item.imageUrl8],
     ["추가 예측 3", item.imageUrl9],
   ];
-  const frames = sourceFrames.filter(([, url]) => Boolean(url)).map(([label, url]) => ({ label, url }));
-  return expandForecastFramesHourly(frames);
+  return sourceFrames.filter(([, url]) => Boolean(url)).map(([label, url]) => ({ label, url }));
 }
 
 function expandForecastFramesHourly(frames) {
@@ -495,14 +502,31 @@ function expandForecastFramesHourly(frames) {
   return hourlyFrames.length ? hourlyFrames : frames;
 }
 
+async function validateForecastFrames(candidates, fallbackFrames) {
+  const validationId = ++forecastValidationId;
+  if (candidates.length <= fallbackFrames.length) return;
+  const checks = await Promise.all(candidates.map((frame) => imageExists(frame.url).then((ok) => ok ? frame : null)));
+  if (validationId !== forecastValidationId) return;
+  const validFrames = checks.filter(Boolean);
+  if (validFrames.length >= 3) {
+    forecastFrameIndex = Math.min(forecastFrameIndex, validFrames.length - 1);
+    setForecastFrames(validFrames);
+  }
+}
+
+function imageExists(url) {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(true);
+    image.onerror = () => resolve(false);
+    image.src = url;
+  });
+}
+
 function showForecastFrame() {
   const frame = forecastFrames[forecastFrameIndex];
   if (!frame) return;
-  els.forecastImage.onerror = () => {
-    if (forecastFrames.length < 2) return;
-    forecastFrameIndex = (forecastFrameIndex + 1) % forecastFrames.length;
-    showForecastFrame();
-  };
+  els.forecastImage.onerror = null;
   els.forecastImage.src = frame.url;
   els.forecastFrameLabel.textContent = `${forecastFrameIndex + 1}/${forecastFrames.length} · ${frame.label}`;
   els.forecastDots.querySelectorAll("button").forEach((button, index) => {
@@ -516,7 +540,7 @@ function restartForecastAnimation() {
   forecastTimer = window.setInterval(() => {
     forecastFrameIndex = (forecastFrameIndex + 1) % forecastFrames.length;
     showForecastFrame();
-  }, 1400);
+  }, 3200);
 }
 
 function renderAll() {
