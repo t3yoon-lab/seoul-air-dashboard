@@ -56,6 +56,10 @@ let locationMatch = null;
 let hourlyData = [];
 let forecastItems = [];
 let hourlyRequestId = 0;
+let forecastFrames = [];
+let forecastFrameIndex = 0;
+let forecastTimer = null;
+let forecastPlaying = true;
 
 const els = {
   updatedAt: document.querySelector("#updatedAt"),
@@ -91,6 +95,9 @@ const els = {
   forecastImage: document.querySelector("#forecastImage"),
   forecastPlaceholder: document.querySelector("#forecastPlaceholder"),
   forecastIssuedAt: document.querySelector("#forecastIssuedAt"),
+  forecastPlayBtn: document.querySelector("#forecastPlayBtn"),
+  forecastFrameLabel: document.querySelector("#forecastFrameLabel"),
+  forecastDots: document.querySelector("#forecastDots"),
   forecastSummary: document.querySelector("#forecastSummary"),
   metricTabs: document.querySelectorAll(".metric-tab"),
   dayTabs: document.querySelectorAll(".day-tab"),
@@ -173,7 +180,8 @@ function buildMap() {
     button.style.setProperty("--badge-color", colorFor(item));
     button.style.setProperty("--area-color", areaColorFor(item));
     button.style.setProperty("--tilt", `${((x + y) % 7) - 3}deg`);
-    button.innerHTML = `<span>${item.name}</span><small>${formatMetricValue(valueForMetric(item))}</small>`;
+    const marker = locationMatch?.name === item.name ? `<em aria-label="현재 위치">내 위치</em>` : "";
+    button.innerHTML = `${marker}<span>${item.name}</span><small>${formatMetricValue(valueForMetric(item))}</small>`;
     button.addEventListener("click", () => selectDistrict(item.name));
     els.districtMap.appendChild(button);
   });
@@ -200,7 +208,7 @@ function renderDetail() {
   const grade = GRADE_INFO[gradeKey];
   els.selectedName.textContent = item.name;
   if (locationMatch?.name === item.name) {
-    els.locationNote.textContent = `내 위치 기준 · 약 ${locationMatch.distance.toFixed(1)}km`;
+    els.locationNote.textContent = `내 위치 기준 ${item.name} · 측정소 중심 약 ${locationMatch.distance.toFixed(1)}km · 위치 정확도 ${formatAccuracy(locationMatch.accuracy)}`;
     els.locationNote.hidden = false;
   } else {
     els.locationNote.hidden = true;
@@ -378,15 +386,30 @@ function renderHourlyChart() {
 
 function renderForecastImage() {
   const item = forecastForActiveDay() || forecastForActiveDay(activeMetric === "pm25" ? "pm10" : "pm25");
-  const imageUrl = imageForForecast(item);
+  forecastFrames = framesForForecast(item);
+  if (forecastFrameIndex >= forecastFrames.length) forecastFrameIndex = 0;
+  const frame = forecastFrames[forecastFrameIndex];
   const grade = seoulGradeFromForecast(item);
   els.forecastIssuedAt.textContent = item?.dataTime || "예보 확인 중";
   els.forecastSummary.textContent = item
     ? `${item.informData} 서울 ${METRIC_META[activeMetric].label} 예보는 ${grade || "확인 중"}입니다. ${item.informOverall || ""}`
     : "예보통보 API에서 내일·모레 자료를 확인하지 못했습니다.";
-  els.forecastImage.hidden = !imageUrl;
-  els.forecastPlaceholder.hidden = Boolean(imageUrl);
-  if (imageUrl) els.forecastImage.src = imageUrl;
+  els.forecastImage.hidden = !frame;
+  els.forecastPlaceholder.hidden = Boolean(frame);
+  els.forecastFrameLabel.textContent = frame ? frame.label : "예측 영상 없음";
+  els.forecastPlayBtn.hidden = forecastFrames.length < 2;
+  els.forecastDots.innerHTML = forecastFrames.map((_, index) => (
+    `<button class="${index === forecastFrameIndex ? "active" : ""}" type="button" aria-label="${index + 1}번째 예측 영상"></button>`
+  )).join("");
+  els.forecastDots.querySelectorAll("button").forEach((button, index) => {
+    button.addEventListener("click", () => {
+      forecastFrameIndex = index;
+      showForecastFrame();
+      restartForecastAnimation();
+    });
+  });
+  if (frame) showForecastFrame();
+  restartForecastAnimation();
 }
 
 function imageForForecast(item) {
@@ -394,6 +417,47 @@ function imageForForecast(item) {
   if (activeDay === "after") return item.imageUrl9 || item.imageUrl6 || item.imageUrl3 || item.imageUrl1 || "";
   if (activeDay === "tomorrow") return item.imageUrl6 || item.imageUrl3 || item.imageUrl2 || item.imageUrl1 || "";
   return item.imageUrl1 || item.imageUrl2 || item.imageUrl3 || "";
+}
+
+function framesForForecast(item) {
+  if (!item) return [];
+  const frames = activeMetric === "pm25"
+    ? [
+      ["21시", item.imageUrl4],
+      ["다음날 03시", item.imageUrl5],
+      ["다음날 09시", item.imageUrl6],
+      ["추가 예측 1", item.imageUrl7],
+      ["추가 예측 2", item.imageUrl8],
+      ["추가 예측 3", item.imageUrl9],
+    ]
+    : [
+    ["21시", item.imageUrl1],
+    ["다음날 03시", item.imageUrl2],
+    ["다음날 09시", item.imageUrl3],
+    ["추가 예측 1", item.imageUrl7],
+    ["추가 예측 2", item.imageUrl8],
+    ["추가 예측 3", item.imageUrl9],
+  ];
+  return frames.filter(([, url]) => Boolean(url)).map(([label, url]) => ({ label, url }));
+}
+
+function showForecastFrame() {
+  const frame = forecastFrames[forecastFrameIndex];
+  if (!frame) return;
+  els.forecastImage.src = frame.url;
+  els.forecastFrameLabel.textContent = `${forecastFrameIndex + 1}/${forecastFrames.length} · ${frame.label}`;
+  els.forecastDots.querySelectorAll("button").forEach((button, index) => {
+    button.classList.toggle("active", index === forecastFrameIndex);
+  });
+}
+
+function restartForecastAnimation() {
+  window.clearInterval(forecastTimer);
+  if (!forecastPlaying || forecastFrames.length < 2) return;
+  forecastTimer = window.setInterval(() => {
+    forecastFrameIndex = (forecastFrameIndex + 1) % forecastFrames.length;
+    showForecastFrame();
+  }, 1400);
 }
 
 function renderAll() {
@@ -421,9 +485,9 @@ function distanceKm(fromLat, fromLng, toLat, toLng) {
   return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function nearestDistrict(latitude, longitude) {
+function nearestDistrict(latitude, longitude, accuracy = null) {
   return Object.entries(DISTRICT_CENTERS)
-    .map(([name, [lat, lng]]) => ({ name, distance: distanceKm(latitude, longitude, lat, lng) }))
+    .map(([name, [lat, lng]]) => ({ name, distance: distanceKm(latitude, longitude, lat, lng), latitude, longitude, accuracy }))
     .sort((a, b) => a.distance - b.distance)[0];
 }
 
@@ -473,7 +537,19 @@ function buildForecastUrl(apiKey) {
   return `${FORECAST_URL}?${params.toString()}`;
 }
 
-function useCurrentLocation() {
+function formatAccuracy(accuracy) {
+  if (!Number.isFinite(accuracy)) return "확인 중";
+  if (accuracy >= 1000) return `약 ${(accuracy / 1000).toFixed(1)}km`;
+  return `약 ${Math.round(accuracy)}m`;
+}
+
+function describeLocation(match) {
+  const distance = match.distance.toFixed(1);
+  const accuracy = formatAccuracy(match.accuracy);
+  return `현재 위치를 ${match.name} 기준으로 반영했습니다. 측정소 중심까지 약 ${distance}km, 위치 정확도는 ${accuracy}입니다.`;
+}
+
+function useCurrentLocation({ silent = false } = {}) {
   if (!navigator.geolocation) {
     showNotice("이 브라우저에서는 현재 위치 기능을 사용할 수 없습니다.");
     return;
@@ -483,18 +559,22 @@ function useCurrentLocation() {
   navigator.geolocation.getCurrentPosition(
     (position) => {
       const { latitude, longitude } = position.coords;
-      const match = nearestDistrict(latitude, longitude);
+      const match = nearestDistrict(latitude, longitude, position.coords.accuracy);
       const hasData = airData.some((item) => item.name === match.name);
       locationMatch = match;
       if (hasData) selectDistrict(match.name);
       else renderAll();
       if (match.distance > 12) {
         showNotice(`현재 위치가 서울 중심권 밖으로 보입니다. 가장 가까운 서울 측정소인 ${match.name} 기준으로 표시합니다.`);
+      } else if (match.accuracy > 1500) {
+        showNotice(`${describeLocation(match)} 브라우저 위치가 넓게 잡혀 근처 자치구와 차이가 날 수 있습니다.`);
+      } else if (!silent) {
+        showNotice(describeLocation(match));
       } else {
         els.notice.hidden = true;
       }
       els.locationBtn.disabled = false;
-      els.locationBtn.textContent = "현재 위치";
+      els.locationBtn.textContent = `내 위치: ${match.name}`;
     },
     (error) => {
       const reason = error.code === error.PERMISSION_DENIED ? "위치 권한이 거부되었습니다." : "현재 위치를 확인하지 못했습니다.";
@@ -502,7 +582,7 @@ function useCurrentLocation() {
       els.locationBtn.disabled = false;
       els.locationBtn.textContent = "현재 위치";
     },
-    { enableHighAccuracy: true, timeout: 9000, maximumAge: 300000 },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
   );
 }
 
@@ -523,6 +603,7 @@ async function fetchAirData() {
     els.updatedAt.textContent = formatDate(newest);
     await fetchForecastData();
     fetchHourlyData(selectedName);
+    applyLocationIfAlreadyGranted();
   } catch (error) {
     airData = FALLBACK;
     els.updatedAt.textContent = "예시 데이터";
@@ -562,6 +643,16 @@ async function fetchForecastData() {
   }
 }
 
+async function applyLocationIfAlreadyGranted() {
+  if (!navigator.permissions || !navigator.geolocation) return;
+  try {
+    const status = await navigator.permissions.query({ name: "geolocation" });
+    if (status.state === "granted") useCurrentLocation({ silent: true });
+  } catch (error) {
+    // Some browsers support geolocation but not querying its permission state.
+  }
+}
+
 function formatDate(value) {
   if (/^\d{12}$/.test(value)) {
     return `${value.slice(0, 4)}.${value.slice(4, 6)}.${value.slice(6, 8)} ${value.slice(8, 10)}:${value.slice(10, 12)}`;
@@ -578,6 +669,11 @@ function formatLocalDate(date) {
 
 els.refreshBtn.addEventListener("click", fetchAirData);
 els.locationBtn.addEventListener("click", useCurrentLocation);
+els.forecastPlayBtn.addEventListener("click", () => {
+  forecastPlaying = !forecastPlaying;
+  els.forecastPlayBtn.textContent = forecastPlaying ? "일시정지" : "재생";
+  restartForecastAnimation();
+});
 els.districtSelect.addEventListener("change", (event) => selectDistrict(event.target.value));
 els.searchInput.addEventListener("input", renderTable);
 els.metricTabs.forEach((button) => {

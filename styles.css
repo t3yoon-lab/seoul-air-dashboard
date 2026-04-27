@@ -372,10 +372,25 @@ h1 {
 }
 
 .district span,
-.district small {
+.district small,
+.district em {
   position: relative;
   z-index: 2;
   display: block;
+}
+
+.district em {
+  width: fit-content;
+  margin: 0 auto 4px;
+  padding: 3px 8px;
+  border-radius: var(--radius-control);
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 8px 18px rgba(0, 113, 227, 0.18);
 }
 
 .district span {
@@ -410,6 +425,10 @@ h1 {
   box-shadow:
     0 0 0 5px rgba(0, 113, 227, 0.12),
     0 10px 22px rgba(0, 0, 0, 0.14);
+}
+
+.district.current span {
+  color: var(--color-accent);
 }
 
 .map-unit {
@@ -703,6 +722,49 @@ h1 {
   max-height: 360px;
   object-fit: contain;
   mix-blend-mode: multiply;
+  transition: opacity 240ms ease;
+}
+
+.forecast-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 24px 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mini-button {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.forecast-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.forecast-dots button {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.forecast-dots button.active {
+  width: 18px;
+  background: var(--color-accent);
 }
 
 .forecast-placeholder,
@@ -1020,6 +1082,16 @@ tr:hover td {
     min-height: 220px;
     margin: 0 18px;
     border-radius: 20px;
+  }
+
+  .forecast-controls {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 14px 18px 0;
+  }
+
+  .forecast-dots {
+    margin-left: 0;
   }
 
   .forecast-copy {
