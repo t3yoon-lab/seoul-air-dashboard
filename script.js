@@ -60,7 +60,6 @@ let forecastFrames = [];
 let forecastFrameIndex = 0;
 let forecastTimer = null;
 let forecastPlaying = true;
-let forecastValidationId = 0;
 
 const els = {
   updatedAt: document.querySelector("#updatedAt"),
@@ -423,13 +422,12 @@ function renderForecastImage() {
   const item = forecastForActiveDay() || forecastForActiveDay(activeMetric === "pm25" ? "pm10" : "pm25");
   const sourceFrames = sourceFramesForForecast(item);
   const hourlyFrames = expandForecastFramesHourly(sourceFrames);
-  setForecastFrames(sourceFrames);
+  setForecastFrames(hourlyFrames.length ? hourlyFrames : sourceFrames);
   const grade = seoulGradeFromForecast(item);
   els.forecastIssuedAt.textContent = item?.dataTime || "예보 확인 중";
   els.forecastSummary.textContent = item
     ? `${item.informData} 서울 ${METRIC_META[activeMetric].label} 예보는 ${grade || "확인 중"}입니다. ${item.informOverall || ""}`
     : "예보통보 API에서 내일·모레 자료를 확인하지 못했습니다.";
-  validateForecastFrames(hourlyFrames, sourceFrames);
 }
 
 function setForecastFrames(frames) {
@@ -491,43 +489,33 @@ function expandForecastFramesHourly(frames) {
   if (parsed.length < 2) return frames;
   const start = parsed[0].time;
   const end = parsed[parsed.length - 1].time;
-  const template = parsed[0].url;
   const hourlyFrames = [];
   for (let time = new Date(start); time <= end; time.setHours(time.getHours() + 1)) {
+    const source = nearestForecastSource(time, parsed);
     hourlyFrames.push({
       label: formatForecastFrameLabel(time),
-      url: replaceForecastTime(template, time),
+      url: source.url,
+      sourceLabel: source.label,
     });
   }
   return hourlyFrames.length ? hourlyFrames : frames;
 }
 
-async function validateForecastFrames(candidates, fallbackFrames) {
-  const validationId = ++forecastValidationId;
-  if (candidates.length <= fallbackFrames.length) return;
-  const checks = await Promise.all(candidates.map((frame) => imageExists(frame.url).then((ok) => ok ? frame : null)));
-  if (validationId !== forecastValidationId) return;
-  const validFrames = checks.filter(Boolean);
-  if (validFrames.length >= 3) {
-    forecastFrameIndex = Math.min(forecastFrameIndex, validFrames.length - 1);
-    setForecastFrames(validFrames);
-  }
-}
-
-function imageExists(url) {
-  return new Promise((resolve) => {
-    const image = new Image();
-    image.onload = () => resolve(true);
-    image.onerror = () => resolve(false);
-    image.src = url;
-  });
+function nearestForecastSource(time, frames) {
+  return frames.reduce((nearest, frame) => {
+    const nearestDiff = Math.abs(nearest.time - time);
+    const frameDiff = Math.abs(frame.time - time);
+    return frameDiff < nearestDiff ? frame : nearest;
+  }, frames[0]);
 }
 
 function showForecastFrame() {
   const frame = forecastFrames[forecastFrameIndex];
   if (!frame) return;
   els.forecastImage.onerror = null;
+  els.forecastImage.classList.remove("active");
   els.forecastImage.src = frame.url;
+  window.requestAnimationFrame(() => els.forecastImage.classList.add("active"));
   els.forecastFrameLabel.textContent = `${forecastFrameIndex + 1}/${forecastFrames.length} · ${frame.label}`;
   els.forecastDots.querySelectorAll("button").forEach((button, index) => {
     button.classList.toggle("active", index === forecastFrameIndex);
@@ -774,11 +762,6 @@ function forecastTimeFromUrl(url) {
     Number(stamp.slice(6, 8)),
     Number(stamp.slice(8, 10)),
   );
-}
-
-function replaceForecastTime(url, date) {
-  const stamp = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}${String(date.getHours()).padStart(2, "0")}`;
-  return String(url || "").replace(/(\d{10})(?=\.png(?:\?|$))/, stamp);
 }
 
 function formatForecastFrameLabel(date) {

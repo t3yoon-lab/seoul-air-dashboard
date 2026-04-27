@@ -200,18 +200,23 @@ h1 {
 }
 
 .pollutant-tabs {
-  display: inline-flex;
+  display: flex;
   gap: 6px;
   padding: 6px;
-  margin-bottom: 24px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(20px);
 }
 
+.map-card .pollutant-tabs {
+  margin-top: 20px;
+  margin-bottom: 0;
+}
+
 .metric-tab {
-  min-width: 104px;
+  flex: 1;
+  min-width: 0;
   height: 40px;
   padding: 0 18px;
   border: 0;
@@ -735,7 +740,14 @@ h1 {
   max-height: 360px;
   object-fit: contain;
   mix-blend-mode: multiply;
-  transition: opacity 240ms ease;
+  opacity: 0.78;
+  transform: scale(0.996);
+  transition: opacity 360ms ease, transform 360ms ease;
+}
+
+.forecast-visual img.active {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .forecast-controls {
