@@ -97,6 +97,7 @@ const els = {
   forecastIssuedAt: document.querySelector("#forecastIssuedAt"),
   forecastPlayBtn: document.querySelector("#forecastPlayBtn"),
   forecastFrameLabel: document.querySelector("#forecastFrameLabel"),
+  forecastProgress: document.querySelector("#forecastProgress"),
   forecastDots: document.querySelector("#forecastDots"),
   forecastSummary: document.querySelector("#forecastSummary"),
   metricTabs: document.querySelectorAll(".metric-tab"),
@@ -517,6 +518,8 @@ function showForecastFrame() {
   els.forecastImage.src = frame.url;
   window.requestAnimationFrame(() => els.forecastImage.classList.add("active"));
   els.forecastFrameLabel.textContent = `${forecastFrameIndex + 1}/${forecastFrames.length} · ${frame.label}`;
+  const progress = forecastFrames.length > 1 ? ((forecastFrameIndex + 1) / forecastFrames.length) * 100 : 100;
+  els.forecastProgress.style.setProperty("--progress", `${progress}%`);
   els.forecastDots.querySelectorAll("button").forEach((button, index) => {
     button.classList.toggle("active", index === forecastFrameIndex);
   });

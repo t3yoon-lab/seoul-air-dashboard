@@ -76,12 +76,15 @@
             <div class="range-part range-bad"><span>나쁨</span><b id="badLimit">~150</b></div>
             <div class="range-part range-very-bad"><span>매우나쁨</span><b id="veryBadLimit">151~</b></div>
           </div>
-          <nav class="pollutant-tabs" aria-label="대기 항목 선택">
-            <button class="metric-tab active" type="button" data-metric="pm10">미세먼지</button>
-            <button class="metric-tab" type="button" data-metric="pm25">초미세먼지</button>
-            <button class="metric-tab" type="button" data-metric="o3">오존</button>
-            <button class="metric-tab" type="button" data-metric="dust">황사</button>
-          </nav>
+          <div class="map-metric-switcher">
+            <span>항목 선택</span>
+            <nav class="pollutant-tabs" aria-label="대기 항목 선택">
+              <button class="metric-tab active" type="button" data-metric="pm10">미세먼지</button>
+              <button class="metric-tab" type="button" data-metric="pm25">초미세먼지</button>
+              <button class="metric-tab" type="button" data-metric="o3">오존</button>
+              <button class="metric-tab" type="button" data-metric="dust">황사</button>
+            </nav>
+          </div>
         </article>
 
         <aside class="forecast-summary" aria-label="오전 오후 대기질 요약">
@@ -152,7 +155,10 @@
           </div>
           <div class="forecast-controls">
             <button id="forecastPlayBtn" class="mini-button" type="button">일시정지</button>
-            <span id="forecastFrameLabel">예측 영상 준비 중</span>
+            <div class="forecast-time">
+              <span id="forecastFrameLabel">예측 영상 준비 중</span>
+              <div id="forecastProgress" class="forecast-progress" aria-hidden="true"><span></span></div>
+            </div>
             <div id="forecastDots" class="forecast-dots" aria-label="예측 영상 프레임"></div>
           </div>
           <p id="forecastSummary" class="forecast-copy">내일과 모레 예보를 공공데이터 예보통보 기준으로 확인합니다.</p>

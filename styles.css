@@ -209,9 +209,28 @@ h1 {
   backdrop-filter: blur(20px);
 }
 
-.map-card .pollutant-tabs {
+.map-metric-switcher {
   margin-top: 20px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.map-metric-switcher > span {
+  display: block;
+  margin: 0 0 10px;
+  color: var(--color-text-subtle);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.map-card .pollutant-tabs {
+  margin-top: 0;
   margin-bottom: 0;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
 }
 
 .metric-tab {
@@ -752,12 +771,35 @@ h1 {
 
 .forecast-controls {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   padding: 14px 24px 0;
   color: var(--color-text-muted);
   font-size: 13px;
   font-weight: 600;
+}
+
+.forecast-time {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+.forecast-progress {
+  height: 6px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: var(--radius-control);
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.forecast-progress span {
+  display: block;
+  width: var(--progress, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+  transition: width 420ms var(--ease-out);
 }
 
 .mini-button {
@@ -775,9 +817,14 @@ h1 {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
-  max-width: 220px;
-  overflow: hidden;
+  max-width: 260px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-top: 13px;
+}
+
+.forecast-dots::-webkit-scrollbar {
+  display: none;
 }
 
 .forecast-dots button {
