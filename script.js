@@ -31,9 +31,25 @@ const FALLBACK = [
   ["강동구", 49, 22, 0.034],
 ].map(([name, pm10, pm25, ozone]) => ({ name, pm10, pm25, ozone, date: "예시 데이터" }));
 
+const METRIC_META = {
+  pm10: { label: "미세먼지", unit: "㎍/㎥", average: "(1시간평균)", thresholds: [30, 80, 150], ranges: ["0~30", "31~80", "81~150", "151~"] },
+  pm25: { label: "초미세먼지", unit: "㎍/㎥", average: "(1시간평균)", thresholds: [15, 35, 75], ranges: ["0~15", "16~35", "36~75", "76~"] },
+  o3: { label: "오존", unit: "ppm", average: "(1시간평균)", thresholds: [0.03, 0.09, 0.15], ranges: ["0~0.030", "0.031~0.090", "0.091~0.150", "0.151~"] },
+  dust: { label: "황사", unit: "㎍/㎥", average: "(PM10 참고)", thresholds: [30, 80, 150], ranges: ["0~30", "31~80", "81~150", "151~"] },
+};
+
+const GRADE_INFO = {
+  good: { label: "좋음", color: "#258ee9", message: "좋음 대기오염도 낮아요." },
+  normal: { label: "보통", color: "#0bae58", message: "보통 대기오염도 높지 않아요." },
+  bad: { label: "나쁨", color: "#ff6b19", message: "나쁨 민감군은 주의하세요." },
+  veryBad: { label: "매우나쁨", color: "#f04455", message: "매우나쁨 외출을 줄여주세요." },
+  unknown: { label: "점검", color: "#9aa3ab", message: "점검 측정값을 확인 중이에요." },
+};
+
 let airData = [];
 let selectedName = "종로구";
 let activeMetric = "pm10";
+let activeDay = "today";
 let locationMatch = null;
 
 const els = {
@@ -49,14 +65,25 @@ const els = {
   pm25Value: document.querySelector("#pm25Value"),
   pm10Value: document.querySelector("#pm10Value"),
   o3Value: document.querySelector("#o3Value"),
-  gaugeNeedle: document.querySelector("#gaugeNeedle"),
   adviceText: document.querySelector("#adviceText"),
   lifeIndexGrid: document.querySelector("#lifeIndexGrid"),
   districtSelect: document.querySelector("#districtSelect"),
-  forecastChart: document.querySelector("#forecastChart"),
   rankingBody: document.querySelector("#rankingBody"),
   searchInput: document.querySelector("#searchInput"),
+  unitLabel: document.querySelector("#unitLabel"),
+  averageLabel: document.querySelector("#averageLabel"),
+  goodLimit: document.querySelector("#goodLimit"),
+  normalLimit: document.querySelector("#normalLimit"),
+  badLimit: document.querySelector("#badLimit"),
+  veryBadLimit: document.querySelector("#veryBadLimit"),
+  morningMessage: document.querySelector("#morningMessage"),
+  afternoonMessage: document.querySelector("#afternoonMessage"),
+  morningRange: document.querySelector("#morningRange"),
+  afternoonRange: document.querySelector("#afternoonRange"),
+  morningScale: document.querySelector("#morningScale"),
+  afternoonScale: document.querySelector("#afternoonScale"),
   metricTabs: document.querySelectorAll(".metric-tab"),
+  dayTabs: document.querySelectorAll(".day-tab"),
 };
 
 function toNumber(value) {
@@ -74,73 +101,47 @@ function normalizeRow(row) {
   };
 }
 
-function gradeByPm25(pm25) {
-  if (pm25 === null || pm25 === undefined || pm25 <= 0) {
-    return { label: "🔎 점검", key: "unknown", score: 0, advice: "현재 측정값이 비어 있습니다. 인접 자치구와 최신 업데이트 시각을 함께 확인하세요." };
-  }
-  if (pm25 <= 15) return { label: "😊 좋음", key: "good", score: 18, advice: "야외 활동하기 좋은 공기입니다. 환기는 짧게 열어도 무난합니다." };
-  if (pm25 <= 35) return { label: "🙂 보통", key: "normal", score: 45, advice: "대체로 무난하지만 민감군은 장시간 외출 전 상태를 확인하세요." };
-  if (pm25 <= 75) return { label: "😷 나쁨", key: "bad", score: 72, advice: "마스크 착용을 권장합니다. 어린이와 노약자는 야외 활동을 줄이세요." };
-  return { label: "🚨 매우나쁨", key: "very-bad", score: 94, advice: "외출을 최소화하고 실내 공기질 관리에 신경 써 주세요." };
+function valueForMetric(item, metric = activeMetric) {
+  if (metric === "pm25") return item.pm25;
+  if (metric === "o3") return item.ozone;
+  if (metric === "dust") return item.pm10;
+  return item.pm10;
 }
 
-function clamp(value, min = 0, max = 100) {
-  return Math.min(max, Math.max(min, value));
+function gradeForMetric(value, metric = activeMetric) {
+  if (value === null || value === undefined || value <= 0) return "unknown";
+  const [good, normal, bad] = METRIC_META[metric].thresholds;
+  if (value <= good) return "good";
+  if (value <= normal) return "normal";
+  if (value <= bad) return "bad";
+  return "veryBad";
 }
 
-function scoreLabel(score) {
-  if (score >= 80) return { label: "😊 좋아요", color: "#41b995" };
-  if (score >= 60) return { label: "🙂 괜찮아요", color: "#f0b84f" };
-  if (score >= 35) return { label: "😷 조심", color: "#ee8b68" };
-  return { label: "🚨 쉬어가기", color: "#d86161" };
+function formatMetricValue(value, metric = activeMetric) {
+  if (value === null || value === undefined || value <= 0) return "-";
+  if (metric === "o3") return value.toFixed(3);
+  return Math.round(value);
 }
 
-function buildLifeIndexes(item) {
-  if (!item.pm10 && !item.pm25) {
-    return [
-      ["러닝", "🏃", 0, "🔎 점검", "측정값 없음", "#8f9995"],
-      ["생활", "🧺", 0, "🔎 점검", "인접 자치구를 확인하세요.", "#8f9995"],
-      ["세차", "🚗", 0, "🔎 점검", "먼지 상태 확인 후 판단하세요.", "#8f9995"],
-      ["환기", "🪟", 0, "🔎 점검", "최신 업데이트를 기다려 주세요.", "#8f9995"],
-    ];
-  }
-
-  const pm10 = item.pm10 || 0;
-  const pm25 = item.pm25 || 0;
-  const ozone = item.ozone || 0;
-  const runningScore = clamp(100 - pm25 * 1.65 - Math.max(0, pm10 - 30) * 0.35 - Math.max(0, ozone - 0.06) * 260);
-  const livingScore = clamp(100 - pm25 * 1.15 - Math.max(0, pm10 - 40) * 0.22);
-  const washScore = clamp(100 - pm10 * 0.9 - pm25 * 0.28);
-  const ventScore = clamp(100 - pm25 * 1.45 - Math.max(0, ozone - 0.055) * 360);
-
-  const indexes = [
-    ["러닝", "🏃", runningScore, "짧은 조깅과 산책 기준", runningScore >= 60 ? "가벼운 야외 운동 가능" : "실내 운동을 권장합니다."],
-    ["생활", "🧺", livingScore, "외출·등하교 체감 기준", livingScore >= 60 ? "일상 활동 무난" : "민감군은 노출 시간을 줄이세요."],
-    ["세차", "🚗", washScore, "먼지 재부착 가능성 기준", washScore >= 70 ? "세차하기 좋은 편" : "먼지가 다시 앉을 수 있어요."],
-    ["환기", "🪟", ventScore, "실내 환기 판단 기준", ventScore >= 65 ? "짧은 환기 가능" : "창문은 짧게만 여세요."],
-  ];
-
-  return indexes.map(([name, icon, score, basis, message]) => {
-    const status = scoreLabel(score);
-    return [name, icon, Math.round(score), status.label, `${basis} · ${message}`, status.color];
-  });
+function adjustedValue(value, period) {
+  if (value === null || value === undefined || value <= 0) return value;
+  const dayFactor = activeDay === "tomorrow" ? 0.94 : activeDay === "after" ? 0.9 : 1;
+  const periodFactor = period === "afternoon" ? 1.04 : 0.98;
+  const next = value * dayFactor * periodFactor;
+  return activeMetric === "o3" ? Number(next.toFixed(3)) : Math.round(next);
 }
 
-function colorFor(item, metric = activeMetric) {
-  if (!item.pm10 && !item.pm25) return "#d9ded9";
-  const value = metric === "pm25" ? item.pm25 : metric === "index" ? item.pm25 * 1.2 + item.pm10 * 0.25 : item.pm10;
-  const threshold = metric === "pm10" ? [30, 80, 150] : metric === "pm25" ? [15, 35, 75] : [34, 72, 128];
-  if (value <= threshold[0]) return "#9bdcc2";
-  if (value <= threshold[1]) return "#f2d47d";
-  if (value <= threshold[2]) return "#f1a176";
-  return "#d96c6c";
+function colorFor(item) {
+  return GRADE_INFO[gradeForMetric(valueForMetric(item))].color;
 }
 
-function metricValue(item) {
-  if (!item.pm10 && !item.pm25) return "-";
-  if (activeMetric === "pm25") return item.pm25 ?? "-";
-  if (activeMetric === "index") return Math.round((item.pm25 || 0) * 1.2 + (item.pm10 || 0) * 0.25);
-  return item.pm10 ?? "-";
+function areaColorFor(item) {
+  const grade = gradeForMetric(valueForMetric(item));
+  if (grade === "good") return "#c8e6ff";
+  if (grade === "normal") return "#bdf1cc";
+  if (grade === "bad") return "#ffd1ad";
+  if (grade === "veryBad") return "#ffc6cc";
+  return "#d8dde3";
 }
 
 function buildMap() {
@@ -151,33 +152,36 @@ function buildMap() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `district ${item.name === selectedName ? "active" : ""} ${locationMatch?.name === item.name ? "current" : ""}`;
-    button.style.left = mobile ? `${Math.max(2, Math.min(70, x - 10))}%` : `${x}%`;
-    button.style.top = mobile ? `${Math.max(1, y * 1.12)}%` : `${y}%`;
-    button.style.background = colorFor(item);
-    button.innerHTML = `<span>${emojiForGrade(item.pm25)} ${item.name}</span><small>${metricValue(item)}</small>`;
+    button.style.left = mobile ? "" : `${x}%`;
+    button.style.top = mobile ? "" : `${y}%`;
+    button.style.setProperty("--badge-color", colorFor(item));
+    button.style.setProperty("--area-color", areaColorFor(item));
+    button.style.setProperty("--tilt", `${((x + y) % 7) - 3}deg`);
+    button.innerHTML = `<span>${item.name}</span><small>${formatMetricValue(valueForMetric(item))}</small>`;
     button.addEventListener("click", () => selectDistrict(item.name));
     els.districtMap.appendChild(button);
   });
 }
 
-function emojiForGrade(pm25) {
-  if (pm25 === null || pm25 === undefined || pm25 <= 0) return "🔎";
-  if (pm25 <= 15) return "😊";
-  if (pm25 <= 35) return "🙂";
-  if (pm25 <= 75) return "😷";
-  return "🚨";
+function buildSelect() {
+  els.districtSelect.innerHTML = airData.map((item) => `<option value="${item.name}">${item.name}</option>`).join("");
+  els.districtSelect.value = selectedName;
 }
 
-function buildSelect() {
-  els.districtSelect.innerHTML = airData
-    .map((item) => `<option value="${item.name}">${item.name}</option>`)
-    .join("");
-  els.districtSelect.value = selectedName;
+function renderMetricMeta() {
+  const meta = METRIC_META[activeMetric];
+  els.unitLabel.textContent = meta.unit;
+  els.averageLabel.textContent = meta.average;
+  els.goodLimit.textContent = `~${meta.thresholds[0]}`;
+  els.normalLimit.textContent = `~${meta.thresholds[1]}`;
+  els.badLimit.textContent = `~${meta.thresholds[2]}`;
+  els.veryBadLimit.textContent = `${activeMetric === "o3" ? "0.151" : meta.thresholds[2] + 1}~`;
 }
 
 function renderDetail() {
   const item = airData.find((row) => row.name === selectedName) || airData[0];
-  const grade = gradeByPm25(item.pm25);
+  const gradeKey = gradeForMetric(valueForMetric(item));
+  const grade = GRADE_INFO[gradeKey];
   els.selectedName.textContent = item.name;
   if (locationMatch?.name === item.name) {
     els.locationNote.textContent = `내 위치 기준 · 약 ${locationMatch.distance.toFixed(1)}km`;
@@ -186,20 +190,85 @@ function renderDetail() {
     els.locationNote.hidden = true;
   }
   els.gradeBadge.textContent = grade.label;
-  els.gradeBadge.className = `grade-badge grade-${grade.key}`;
+  els.gradeBadge.className = `grade-badge grade-${gradeKey}`;
   els.pm25Value.textContent = item.pm25 ? Math.round(item.pm25) : "-";
   els.pm10Value.textContent = item.pm10 ? Math.round(item.pm10) : "-";
   els.o3Value.textContent = item.ozone ? item.ozone.toFixed(3) : "-";
-  els.gaugeNeedle.style.left = `${grade.score}%`;
-  els.adviceText.textContent = grade.advice;
+  els.adviceText.textContent = adviceForGrade(gradeKey);
+  renderReports(item);
   renderLifeIndexes(item);
 }
 
+function adviceForGrade(gradeKey) {
+  if (gradeKey === "good") return "대기질이 좋아요. 야외 활동을 편하게 계획해도 괜찮습니다.";
+  if (gradeKey === "normal") return "대체로 무난하지만 민감군은 장시간 외출 전 상태를 확인하세요.";
+  if (gradeKey === "bad") return "마스크 착용을 권장합니다. 어린이와 노약자는 야외 활동을 줄이세요.";
+  if (gradeKey === "veryBad") return "외출을 최소화하고 실내 공기질 관리에 신경 써 주세요.";
+  return "현재 측정값이 비어 있습니다. 인접 자치구와 최신 업데이트 시각을 함께 확인하세요.";
+}
+
+function renderReports(item) {
+  renderSingleReport(item, "morning", els.morningMessage, els.morningRange, els.morningScale);
+  renderSingleReport(item, "afternoon", els.afternoonMessage, els.afternoonRange, els.afternoonScale);
+}
+
+function renderSingleReport(item, period, messageEl, rangeEl, scaleEl) {
+  const value = adjustedValue(valueForMetric(item), period);
+  const gradeKey = gradeForMetric(value);
+  const info = GRADE_INFO[gradeKey];
+  const order = ["good", "normal", "bad", "veryBad"];
+  const range = gradeKey === "unknown" ? "-" : METRIC_META[activeMetric].ranges[order.indexOf(gradeKey)];
+  messageEl.textContent = info.message;
+  messageEl.className = `report-message ${gradeKey}`;
+  rangeEl.textContent = range;
+  rangeEl.style.background = info.color;
+  scaleEl.innerHTML = ["좋음", "보통", "한때나쁨", "나쁨", "매우나쁨"].map((label, index) => {
+    const segmentKey = ["good", "normal", "bad", "bad", "veryBad"][index];
+    const active = gradeKey === segmentKey && (gradeKey !== "bad" || index === 2);
+    return `<span class="scale-segment ${active ? "active" : ""}" style="--scale-color:${info.color}">${label}</span>`;
+  }).join("");
+}
+
+function clamp(value, min = 0, max = 100) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function scoreLabel(score) {
+  if (score >= 80) return { label: "좋음", color: "#258ee9" };
+  if (score >= 60) return { label: "보통", color: "#0bae58" };
+  if (score >= 35) return { label: "주의", color: "#ff6b19" };
+  return { label: "나쁨", color: "#f04455" };
+}
+
+function buildLifeIndexes(item) {
+  if (!item.pm10 && !item.pm25) {
+    return [
+      ["러닝", 0, "점검", "측정값 없음", "#8f9995"],
+      ["생활", 0, "점검", "인접 자치구를 확인하세요.", "#8f9995"],
+      ["세차", 0, "점검", "먼지 상태 확인 후 판단하세요.", "#8f9995"],
+      ["환기", 0, "점검", "최신 업데이트를 기다려 주세요.", "#8f9995"],
+    ];
+  }
+  const pm10 = item.pm10 || 0;
+  const pm25 = item.pm25 || 0;
+  const ozone = item.ozone || 0;
+  const indexes = [
+    ["러닝", clamp(100 - pm25 * 1.65 - Math.max(0, pm10 - 30) * 0.35 - Math.max(0, ozone - 0.06) * 260), "짧은 조깅과 산책 기준"],
+    ["생활", clamp(100 - pm25 * 1.15 - Math.max(0, pm10 - 40) * 0.22), "외출·등하교 체감 기준"],
+    ["세차", clamp(100 - pm10 * 0.9 - pm25 * 0.28), "먼지 재부착 가능성 기준"],
+    ["환기", clamp(100 - pm25 * 1.45 - Math.max(0, ozone - 0.055) * 360), "실내 환기 판단 기준"],
+  ];
+  return indexes.map(([name, score, basis]) => {
+    const status = scoreLabel(score);
+    return [name, Math.round(score), status.label, basis, status.color];
+  });
+}
+
 function renderLifeIndexes(item) {
-  els.lifeIndexGrid.innerHTML = buildLifeIndexes(item).map(([name, icon, score, label, message, color]) => `
+  els.lifeIndexGrid.innerHTML = buildLifeIndexes(item).map(([name, score, label, message, color]) => `
     <article class="life-card" style="--score: ${score}%; --accent: ${color}">
       <div class="life-card-top">
-        <h4><span aria-hidden="true">${icon}</span> ${name} 지수</h4>
+        <h4>${name} 지수</h4>
         <span class="life-score">${score}</span>
       </div>
       <div class="life-bar" aria-hidden="true"><span></span></div>
@@ -209,94 +278,19 @@ function renderLifeIndexes(item) {
   `).join("");
 }
 
-function forecastFor(item) {
-  const hour = new Date().getHours();
-  return Array.from({ length: 12 }, (_, index) => {
-    const wave = Math.sin((hour + index) / 2.8) * 4;
-    const commute = [8, 9, 18, 19].includes((hour + index) % 24) ? 5 : 0;
-    const basePm10 = item.pm10 || 30;
-    const basePm25 = item.pm25 || 15;
-    return {
-      label: `${(hour + index) % 24}시`,
-      pm10: Math.max(5, Math.round(basePm10 + wave + commute - index * 0.3)),
-      pm25: Math.max(3, Math.round(basePm25 + wave * 0.55 + commute * 0.45 - index * 0.18)),
-    };
-  });
-}
-
-function drawChart() {
-  const canvas = els.forecastChart;
-  const ctx = canvas.getContext("2d");
-  const rect = canvas.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = rect.width * dpr;
-  canvas.height = rect.height * dpr;
-  ctx.scale(dpr, dpr);
-  const width = rect.width;
-  const height = rect.height;
-  const pad = { left: 42, right: 18, top: 20, bottom: 42 };
-  ctx.clearRect(0, 0, width, height);
-  const item = airData.find((row) => row.name === selectedName) || airData[0];
-  const forecast = forecastFor(item);
-  const max = Math.max(80, ...forecast.flatMap((point) => [point.pm10, point.pm25])) + 8;
-  const x = (i) => pad.left + (i * (width - pad.left - pad.right)) / (forecast.length - 1);
-  const y = (value) => height - pad.bottom - (value / max) * (height - pad.top - pad.bottom);
-
-  ctx.strokeStyle = "#dfe5df";
-  ctx.lineWidth = 1;
-  ctx.font = "12px system-ui";
-  ctx.fillStyle = "#6a7471";
-  for (let i = 0; i <= 4; i += 1) {
-    const value = Math.round((max / 4) * i);
-    const yy = y(value);
-    ctx.beginPath();
-    ctx.moveTo(pad.left, yy);
-    ctx.lineTo(width - pad.right, yy);
-    ctx.stroke();
-    ctx.fillText(String(value), 8, yy + 4);
-  }
-
-  function line(key, color) {
-    ctx.beginPath();
-    forecast.forEach((point, index) => {
-      const xx = x(index);
-      const yy = y(point[key]);
-      if (index === 0) ctx.moveTo(xx, yy);
-      else ctx.lineTo(xx, yy);
-    });
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    forecast.forEach((point, index) => {
-      ctx.beginPath();
-      ctx.arc(x(index), y(point[key]), 4, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.fill();
-    });
-  }
-
-  line("pm10", "#147d72");
-  line("pm25", "#e76f51");
-  ctx.fillStyle = "#6a7471";
-  forecast.forEach((point, index) => ctx.fillText(point.label, x(index) - 10, height - 16));
-  ctx.fillStyle = "#147d72";
-  ctx.fillText("PM10", width - 100, 24);
-  ctx.fillStyle = "#e76f51";
-  ctx.fillText("PM2.5", width - 55, 24);
-}
-
 function renderTable() {
   const keyword = els.searchInput.value.trim();
   const rows = airData
     .filter((item) => item.name.includes(keyword))
-    .sort((a, b) => (b.pm25 || -1) - (a.pm25 || -1));
+    .sort((a, b) => (valueForMetric(b) || -1) - (valueForMetric(a) || -1));
   els.rankingBody.innerHTML = rows.map((item) => {
-    const grade = gradeByPm25(item.pm25);
+    const gradeKey = gradeForMetric(valueForMetric(item));
+    const grade = GRADE_INFO[gradeKey];
     return `<tr data-name="${item.name}">
-      <td><strong>${emojiForGrade(item.pm25)} ${item.name}</strong></td>
+      <td><strong>${item.name}</strong></td>
       <td>${item.pm10 ? Math.round(item.pm10) : "-"}</td>
       <td>${item.pm25 ? Math.round(item.pm25) : "-"}</td>
-      <td><span class="status-pill grade-${grade.key}">${grade.label}</span></td>
+      <td><span class="status-pill grade-${gradeKey}">${grade.label}</span></td>
     </tr>`;
   }).join("");
   els.rankingBody.querySelectorAll("tr").forEach((row) => {
@@ -307,8 +301,8 @@ function renderTable() {
 function renderAll() {
   buildMap();
   buildSelect();
+  renderMetricMeta();
   renderDetail();
-  drawChart();
   renderTable();
 }
 
@@ -375,9 +369,8 @@ function useCurrentLocation() {
     showNotice("이 브라우저에서는 현재 위치 기능을 사용할 수 없습니다.");
     return;
   }
-
   els.locationBtn.disabled = true;
-  els.locationBtn.lastChild.textContent = " 확인 중";
+  els.locationBtn.textContent = "확인 중";
   navigator.geolocation.getCurrentPosition(
     (position) => {
       const { latitude, longitude } = position.coords;
@@ -392,13 +385,13 @@ function useCurrentLocation() {
         els.notice.hidden = true;
       }
       els.locationBtn.disabled = false;
-      els.locationBtn.lastChild.textContent = " 현재 위치";
+      els.locationBtn.textContent = "현재 위치";
     },
     (error) => {
       const reason = error.code === error.PERMISSION_DENIED ? "위치 권한이 거부되었습니다." : "현재 위치를 확인하지 못했습니다.";
       showNotice(`${reason} 브라우저 주소창의 위치 권한을 허용한 뒤 다시 눌러 주세요.`);
       els.locationBtn.disabled = false;
-      els.locationBtn.lastChild.textContent = " 현재 위치";
+      els.locationBtn.textContent = "현재 위치";
     },
     { enableHighAccuracy: true, timeout: 9000, maximumAge: 300000 },
   );
@@ -413,7 +406,7 @@ async function fetchAirData() {
     const response = await fetch(buildApiUrl(apiKey), { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const json = await response.json();
-    const rows = json.response?.body?.items || json.ListAirQualityByDistrictService?.row || json.row || [];
+    const rows = json.response?.body?.items || [];
     const normalized = rows.map(normalizeRow).filter((row) => row.name && POSITIONS[row.name]);
     if (normalized.length < 10) throw new Error("응답 데이터가 충분하지 않습니다.");
     airData = normalized;
@@ -423,8 +416,7 @@ async function fetchAirData() {
   } catch (error) {
     airData = FALLBACK;
     els.updatedAt.textContent = "예시 데이터";
-    els.notice.textContent = `공공데이터 API를 불러오지 못해 예시 데이터로 표시합니다. (${error.message})`;
-    els.notice.hidden = false;
+    showNotice(`예시 데이터로 표시합니다. (${error.message})`);
   } finally {
     renderAll();
     els.refreshBtn.disabled = false;
@@ -447,12 +439,16 @@ els.metricTabs.forEach((button) => {
   button.addEventListener("click", () => {
     activeMetric = button.dataset.metric;
     els.metricTabs.forEach((tab) => tab.classList.toggle("active", tab === button));
-    buildMap();
+    renderAll();
   });
 });
-window.addEventListener("resize", () => {
-  buildMap();
-  drawChart();
+els.dayTabs.forEach((button) => {
+  button.addEventListener("click", () => {
+    activeDay = button.dataset.day;
+    els.dayTabs.forEach((tab) => tab.classList.toggle("active", tab === button));
+    renderDetail();
+  });
 });
+window.addEventListener("resize", buildMap);
 
 fetchAirData();

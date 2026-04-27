@@ -3,30 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>서울 미세먼지 현황</title>
+    <title>대기환경정보</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <main class="shell">
-      <header class="topbar">
+      <header class="utility-bar">
         <div>
-          <p class="eyebrow">Seoul Public Air Monitor</p>
-          <h1><span aria-hidden="true">🌤️</span> 서울 미세먼지 현황</h1>
+          <h1>대기환경정보</h1>
+          <p id="locationNote" class="location-note" hidden></p>
         </div>
         <div class="top-actions">
           <div class="updated">
             <span>업데이트</span>
             <strong id="updatedAt">불러오는 중</strong>
           </div>
-          <button id="locationBtn" class="text-button" type="button">
-            <span aria-hidden="true">📍</span>
-            현재 위치
-          </button>
-          <button id="apiKeyBtn" class="text-button" type="button">
-            <span aria-hidden="true">🔑</span>
-            API 키
-          </button>
+          <button id="locationBtn" class="text-button" type="button">현재 위치</button>
+          <button id="apiKeyBtn" class="text-button" type="button">API 키</button>
           <button id="refreshBtn" class="icon-button" type="button" aria-label="새로고침">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M20 11a8 8 0 1 0-2.34 5.66" />
@@ -36,82 +30,78 @@
         </div>
       </header>
 
+      <nav class="pollutant-tabs" aria-label="대기 항목 선택">
+        <button class="metric-tab active" type="button" data-metric="pm10">미세먼지</button>
+        <button class="metric-tab" type="button" data-metric="pm25">초미세먼지</button>
+        <button class="metric-tab" type="button" data-metric="o3">오존</button>
+        <button class="metric-tab" type="button" data-metric="dust">황사</button>
+      </nav>
+
       <section id="notice" class="notice" hidden></section>
 
-      <section class="dashboard-grid" aria-label="서울 미세먼지 대시보드">
-        <article class="panel map-panel">
-          <div class="panel-heading">
-            <div>
-              <p class="section-kicker">District map</p>
-              <h2><span aria-hidden="true">🗺️</span> 자치구별 농도</h2>
-            </div>
-            <div class="segmented" role="tablist" aria-label="지도 지표 선택">
-              <button class="metric-tab active" type="button" data-metric="pm10">PM10</button>
-              <button class="metric-tab" type="button" data-metric="pm25">PM2.5</button>
-              <button class="metric-tab" type="button" data-metric="index">통합</button>
-            </div>
-          </div>
+      <div class="day-tabs" role="tablist" aria-label="예보 날짜 선택">
+        <button class="day-tab active" type="button" data-day="today">현재</button>
+        <button class="day-tab" type="button" data-day="tomorrow">내일</button>
+        <button class="day-tab" type="button" data-day="after">모레</button>
+      </div>
 
+      <section class="air-layout" aria-label="서울 대기환경정보">
+        <article class="map-card" aria-label="서울 자치구별 농도">
           <div class="seoul-map-wrap">
             <div class="river" aria-hidden="true"></div>
             <div id="districtMap" class="district-map" aria-label="서울 자치구 지도"></div>
+            <div class="map-unit">
+              단위 <span id="unitLabel">㎍/㎥</span><br />
+              <span id="averageLabel">(1시간평균)</span>
+            </div>
           </div>
-
-          <div class="legend" aria-label="대기질 범례">
-            <span><i class="good"></i>😊 좋음</span>
-            <span><i class="normal"></i>🙂 보통</span>
-            <span><i class="bad"></i>😷 나쁨</span>
-            <span><i class="very-bad"></i>🚨 매우나쁨</span>
+          <div class="range-legend" aria-label="등급 범례">
+            <div class="range-part range-good"><span>좋음 0</span><b id="goodLimit">~30</b></div>
+            <div class="range-part range-normal"><span>보통</span><b id="normalLimit">~80</b></div>
+            <div class="range-part range-bad"><span>나쁨</span><b id="badLimit">~150</b></div>
+            <div class="range-part range-very-bad"><span>매우나쁨</span><b id="veryBadLimit">151~</b></div>
           </div>
         </article>
 
-        <aside class="panel detail-panel">
-          <div class="panel-heading compact">
+        <aside class="forecast-summary" aria-label="오전 오후 대기질 요약">
+          <div class="selected-strip">
             <div>
-              <p class="section-kicker">Selected district</p>
-              <h2 id="selectedName">서울</h2>
-              <p id="locationNote" class="location-note" hidden></p>
+              <span>선택 지역</span>
+              <strong id="selectedName">종로구</strong>
             </div>
             <span id="gradeBadge" class="grade-badge">-</span>
           </div>
 
-          <div class="metric-stack">
-            <div class="large-metric">
-              <span>✨ 초미세먼지 PM2.5</span>
-              <strong id="pm25Value">-</strong>
-              <small>㎍/㎥</small>
-            </div>
-            <div class="metric-pair">
-              <div>
-                <span>🍃 미세먼지 PM10</span>
-                <strong id="pm10Value">-</strong>
-              </div>
-              <div>
-                <span>☀️ 오존 O₃</span>
-                <strong id="o3Value">-</strong>
-              </div>
-            </div>
-          </div>
-
-          <div class="gauge" aria-label="통합 대기질 게이지">
-            <div class="gauge-track">
-              <div id="gaugeNeedle" class="gauge-needle"></div>
-            </div>
-            <div class="gauge-labels">
-              <span>맑음</span>
-              <span>주의</span>
-            </div>
-          </div>
-
-          <div class="advice" id="adviceText">실시간 자료를 불러오고 있습니다.</div>
-
-          <section class="life-index-section" aria-label="대기질 생활 지수">
-            <div class="mini-heading">
-              <p class="section-kicker">Life index</p>
-              <h3><span aria-hidden="true">🧁</span> 미세먼지 생활 지수</h3>
-            </div>
-            <div id="lifeIndexGrid" class="life-index-grid"></div>
+          <section class="time-report">
+            <h2>오전</h2>
+            <p id="morningMessage" class="report-message">보통 대기오염도 높지 않아요.</p>
+            <div class="scale-chip" id="morningRange">31~80</div>
+            <div class="status-scale" id="morningScale"></div>
           </section>
+
+          <section class="time-report">
+            <h2>오후</h2>
+            <p id="afternoonMessage" class="report-message">보통 대기오염도 높지 않아요.</p>
+            <div class="scale-chip" id="afternoonRange">31~80</div>
+            <div class="status-scale" id="afternoonScale"></div>
+          </section>
+
+          <div class="metric-mini">
+            <div>
+              <span>PM10</span>
+              <strong id="pm10Value">-</strong>
+            </div>
+            <div>
+              <span>PM2.5</span>
+              <strong id="pm25Value">-</strong>
+            </div>
+            <div>
+              <span>O₃</span>
+              <strong id="o3Value">-</strong>
+            </div>
+          </div>
+
+          <p id="adviceText" class="advice">실시간 자료를 불러오고 있습니다.</p>
         </aside>
       </section>
 
@@ -119,19 +109,19 @@
         <article class="panel forecast-panel">
           <div class="panel-heading">
             <div>
-              <p class="section-kicker">Forecast</p>
-              <h2><span aria-hidden="true">📈</span> 12시간 예측 흐름</h2>
+              <p class="section-kicker">Lifestyle</p>
+              <h2>생활 지수</h2>
             </div>
             <select id="districtSelect" aria-label="자치구 선택"></select>
           </div>
-          <canvas id="forecastChart" width="900" height="320" aria-label="12시간 예측 차트"></canvas>
+          <div id="lifeIndexGrid" class="life-index-grid"></div>
         </article>
 
         <article class="panel table-panel">
           <div class="panel-heading">
             <div>
               <p class="section-kicker">Ranking</p>
-              <h2><span aria-hidden="true">🏷️</span> 농도 순위</h2>
+              <h2>농도 순위</h2>
             </div>
             <input id="searchInput" type="search" placeholder="자치구 검색" aria-label="자치구 검색" />
           </div>
