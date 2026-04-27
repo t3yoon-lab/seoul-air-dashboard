@@ -2,6 +2,7 @@ const DEFAULT_API_KEY = "745b5fafc3e94dadc4de9d5ef781029c0d717ca5a885b05b914720e
 const API_BASE_URL = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty";
 const STATION_HISTORY_URL = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty";
 const FORECAST_URL = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMinuDustFrcstDspth";
+const FORECAST_INTERVAL_MS = 1800;
 
 const POSITIONS = {
   종로구: [47, 31], 중구: [50, 42], 용산구: [47, 55], 성동구: [61, 48], 광진구: [72, 48],
@@ -281,6 +282,12 @@ function forecastTargetDate() {
   return formatLocalDate(date);
 }
 
+function activeDayLabel() {
+  if (activeDay === "after") return "모레";
+  if (activeDay === "tomorrow") return "내일";
+  return "현재";
+}
+
 function forecastForActiveDay(metric = activeMetric) {
   const code = forecastCodeForMetric(metric);
   const target = forecastTargetDate();
@@ -290,7 +297,7 @@ function forecastForActiveDay(metric = activeMetric) {
 }
 
 function forecastMessage(item, period, label) {
-  const dayLabel = activeDay === "after" ? "모레" : "내일";
+  const dayLabel = activeDayLabel();
   const timeLabel = period === "afternoon" ? "오후" : "오전";
   const issued = item?.dataTime ? ` (${item.dataTime})` : "";
   const gradeKey = gradeKeyFromLabel(label);
@@ -368,8 +375,9 @@ function renderTable() {
 
 function renderHourlyChart() {
   const meta = METRIC_META[activeMetric];
-  const rows = buildHourlySeries(hourlyData).map((row) => ({ ...row, value: valueForMetric(row) }));
-  els.hourlyLabel.textContent = `${selectedName} · ${meta.label}`;
+  const rows = (activeDay === "today" ? buildHourlySeries(hourlyData) : buildForecastHourlySeries())
+    .map((row) => ({ ...row, value: valueForMetric(row) }));
+  els.hourlyLabel.textContent = `${selectedName} · ${meta.label}${activeDay === "today" ? "" : ` · ${activeDayLabel()} 예상`}`;
   if (!rows.length) {
     els.hourlyChart.innerHTML = `<div class="empty-state">시간별 측정값을 확인 중입니다.</div>`;
     return;
@@ -392,6 +400,31 @@ function renderHourlyChart() {
       <small>${row.hour}</small>
     </button>`;
   }).join("");
+}
+
+function buildForecastHourlySeries() {
+  const selected = airData.find((item) => item.name === selectedName) || airData[0];
+  if (!selected) return [];
+  const target = parseLocalDate(forecastTargetDate()) || new Date();
+  const dayOffset = activeDay === "after" ? 2 : 1;
+  const dailyTrend = activeDay === "after" ? 0.92 : 0.96;
+  return Array.from({ length: 24 }, (_, hour) => {
+    const time = new Date(target);
+    time.setHours(hour, 0, 0, 0);
+    const wave = 1 + Math.sin((hour - 7) / 24 * Math.PI * 2) * 0.12;
+    const commute = hour >= 7 && hour <= 10 ? 1.08 : hour >= 17 && hour <= 20 ? 1.06 : 1;
+    const pm10 = selected.pm10 ? Math.max(1, Math.round(selected.pm10 * dailyTrend * wave * commute)) : null;
+    const pm25 = selected.pm25 ? Math.max(1, Math.round(selected.pm25 * (dailyTrend + 0.02) * wave * commute)) : null;
+    const ozone = selected.ozone ? Number(Math.max(0.001, selected.ozone * (1 + dayOffset * 0.02) * (hour >= 12 && hour <= 17 ? 1.08 : 0.96)).toFixed(3)) : null;
+    return {
+      name: selectedName,
+      pm10,
+      pm25,
+      ozone,
+      date: `${formatChartTime(time)} · 예상`,
+      hour: String(hour).padStart(2, "0"),
+    };
+  });
 }
 
 function buildHourlySeries(rows) {
@@ -427,7 +460,7 @@ function renderForecastImage() {
   const grade = seoulGradeFromForecast(item);
   els.forecastIssuedAt.textContent = item?.dataTime || "예보 확인 중";
   els.forecastSummary.textContent = item
-    ? `${item.informData} 서울 ${METRIC_META[activeMetric].label} 예보는 ${grade || "확인 중"}입니다. ${item.informOverall || ""}`
+    ? `${activeDayLabel()} ${item.informData} 서울 ${METRIC_META[activeMetric].label} 예보는 ${grade || "확인 중"}입니다. ${item.informOverall || ""}`
     : "예보통보 API에서 내일·모레 자료를 확인하지 못했습니다.";
 }
 
@@ -531,7 +564,7 @@ function restartForecastAnimation() {
   forecastTimer = window.setInterval(() => {
     forecastFrameIndex = (forecastFrameIndex + 1) % forecastFrames.length;
     showForecastFrame();
-  }, 3200);
+  }, FORECAST_INTERVAL_MS);
 }
 
 function renderAll() {
@@ -741,6 +774,12 @@ function parseDataTime(value) {
   return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
 }
 
+function parseLocalDate(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
 function floorToHour(date) {
   const next = new Date(date);
   next.setMinutes(0, 0, 0);
@@ -790,6 +829,7 @@ els.searchInput.addEventListener("input", renderTable);
 els.metricTabs.forEach((button) => {
   button.addEventListener("click", () => {
     activeMetric = button.dataset.metric;
+    forecastFrameIndex = 0;
     els.metricTabs.forEach((tab) => tab.classList.toggle("active", tab === button));
     fetchForecastData().then(() => renderAll());
   });
@@ -797,6 +837,7 @@ els.metricTabs.forEach((button) => {
 els.dayTabs.forEach((button) => {
   button.addEventListener("click", () => {
     activeDay = button.dataset.day;
+    forecastFrameIndex = 0;
     els.dayTabs.forEach((tab) => tab.classList.toggle("active", tab === button));
     renderDetail();
   });

@@ -558,10 +558,10 @@ h1 {
 .report-message {
   margin-bottom: 24px;
   color: var(--color-success);
-  font-size: clamp(24px, 3vw, 32px);
+  font-size: clamp(19px, 2.2vw, 25px);
   font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: 1.18;
+  letter-spacing: -0.02em;
+  line-height: 1.28;
 }
 
 .report-message.good { color: var(--color-accent); }
@@ -855,9 +855,9 @@ h1 {
 .forecast-copy {
   padding: 18px 24px 24px;
   color: var(--color-text-muted);
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1.55;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .lower-grid {
