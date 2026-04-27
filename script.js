@@ -41,11 +41,11 @@ const METRIC_META = {
 };
 
 const GRADE_INFO = {
-  good: { label: "좋음", color: "#258ee9", message: "좋음 대기오염도 낮아요." },
-  normal: { label: "보통", color: "#0bae58", message: "보통 대기오염도 높지 않아요." },
-  bad: { label: "나쁨", color: "#ff6b19", message: "나쁨 민감군은 주의하세요." },
-  veryBad: { label: "매우나쁨", color: "#f04455", message: "매우나쁨 외출을 줄여주세요." },
-  unknown: { label: "점검", color: "#9aa3ab", message: "점검 측정값을 확인 중이에요." },
+  good: { label: "좋음", emoji: "😊", color: "#258ee9", message: "😊 좋음 대기오염도 낮아요." },
+  normal: { label: "보통", emoji: "🙂", color: "#0bae58", message: "🙂 보통 대기오염도 높지 않아요." },
+  bad: { label: "나쁨", emoji: "😷", color: "#ff6b19", message: "😷 나쁨 민감군은 주의하세요." },
+  veryBad: { label: "매우나쁨", emoji: "🚨", color: "#f04455", message: "🚨 매우나쁨 외출을 줄여주세요." },
+  unknown: { label: "점검", emoji: "🔎", color: "#9aa3ab", message: "🔎 점검 측정값을 확인 중이에요." },
 };
 
 let airData = [];
@@ -213,7 +213,7 @@ function renderDetail() {
   } else {
     els.locationNote.hidden = true;
   }
-  els.gradeBadge.textContent = grade.label;
+  els.gradeBadge.textContent = gradeLabel(gradeKey);
   els.gradeBadge.className = `grade-badge grade-${gradeKey}`;
   els.pm25Value.textContent = item.pm25 ? Math.round(item.pm25) : "-";
   els.pm10Value.textContent = item.pm10 ? Math.round(item.pm10) : "-";
@@ -226,11 +226,11 @@ function renderDetail() {
 }
 
 function adviceForGrade(gradeKey) {
-  if (gradeKey === "good") return "대기질이 좋아요. 야외 활동을 편하게 계획해도 괜찮습니다.";
-  if (gradeKey === "normal") return "대체로 무난하지만 민감군은 장시간 외출 전 상태를 확인하세요.";
-  if (gradeKey === "bad") return "마스크 착용을 권장합니다. 어린이와 노약자는 야외 활동을 줄이세요.";
-  if (gradeKey === "veryBad") return "외출을 최소화하고 실내 공기질 관리에 신경 써 주세요.";
-  return "현재 측정값이 비어 있습니다. 인접 자치구와 최신 업데이트 시각을 함께 확인하세요.";
+  if (gradeKey === "good") return "🌤️ 대기질이 좋아요. 야외 활동을 편하게 계획해도 괜찮습니다.";
+  if (gradeKey === "normal") return "🍃 대체로 무난하지만 민감군은 장시간 외출 전 상태를 확인하세요.";
+  if (gradeKey === "bad") return "😷 마스크 착용을 권장합니다. 어린이와 노약자는 야외 활동을 줄이세요.";
+  if (gradeKey === "veryBad") return "🚨 외출을 최소화하고 실내 공기질 관리에 신경 써 주세요.";
+  return "🔎 현재 측정값이 비어 있습니다. 인접 자치구와 최신 업데이트 시각을 함께 확인하세요.";
 }
 
 function renderReports(item) {
@@ -263,6 +263,11 @@ function gradeKeyFromLabel(label = "") {
   return "unknown";
 }
 
+function gradeLabel(gradeKey) {
+  const info = GRADE_INFO[gradeKey] || GRADE_INFO.unknown;
+  return `${info.emoji} ${info.label}`;
+}
+
 function seoulGradeFromForecast(item) {
   const seoul = item?.informGrade?.split(",").find((part) => part.trim().startsWith("서울"));
   return seoul?.split(":")[1]?.trim() || "";
@@ -287,7 +292,8 @@ function forecastMessage(item, period, label) {
   const dayLabel = activeDay === "after" ? "모레" : "내일";
   const timeLabel = period === "afternoon" ? "오후" : "오전";
   const issued = item?.dataTime ? ` (${item.dataTime})` : "";
-  return `${dayLabel} ${timeLabel} 서울 예보는 ${label}이에요.${issued}`;
+  const gradeKey = gradeKeyFromLabel(label);
+  return `${GRADE_INFO[gradeKey].emoji} ${dayLabel} ${timeLabel} 서울 예보는 ${label}이에요.${issued}`;
 }
 
 function clamp(value, min = 0, max = 100) {
@@ -295,10 +301,10 @@ function clamp(value, min = 0, max = 100) {
 }
 
 function scoreLabel(score) {
-  if (score >= 80) return { label: "좋음", color: "#258ee9" };
-  if (score >= 60) return { label: "보통", color: "#0bae58" };
-  if (score >= 35) return { label: "주의", color: "#ff6b19" };
-  return { label: "나쁨", color: "#f04455" };
+  if (score >= 80) return { label: "😊 좋음", color: "#258ee9" };
+  if (score >= 60) return { label: "🙂 보통", color: "#0bae58" };
+  if (score >= 35) return { label: "😷 주의", color: "#ff6b19" };
+  return { label: "🚨 나쁨", color: "#f04455" };
 }
 
 function buildLifeIndexes(item) {
@@ -314,10 +320,10 @@ function buildLifeIndexes(item) {
   const pm25 = item.pm25 || 0;
   const ozone = item.ozone || 0;
   const indexes = [
-    ["러닝", clamp(100 - pm25 * 1.65 - Math.max(0, pm10 - 30) * 0.35 - Math.max(0, ozone - 0.06) * 260), "짧은 조깅과 산책 기준"],
-    ["생활", clamp(100 - pm25 * 1.15 - Math.max(0, pm10 - 40) * 0.22), "외출·등하교 체감 기준"],
-    ["세차", clamp(100 - pm10 * 0.9 - pm25 * 0.28), "먼지 재부착 가능성 기준"],
-    ["환기", clamp(100 - pm25 * 1.45 - Math.max(0, ozone - 0.055) * 360), "실내 환기 판단 기준"],
+    ["🏃 러닝", clamp(100 - pm25 * 1.65 - Math.max(0, pm10 - 30) * 0.35 - Math.max(0, ozone - 0.06) * 260), "짧은 조깅과 산책 기준"],
+    ["🧺 생활", clamp(100 - pm25 * 1.15 - Math.max(0, pm10 - 40) * 0.22), "외출·등하교 체감 기준"],
+    ["🚗 세차", clamp(100 - pm10 * 0.9 - pm25 * 0.28), "먼지 재부착 가능성 기준"],
+    ["🪟 환기", clamp(100 - pm25 * 1.45 - Math.max(0, ozone - 0.055) * 360), "실내 환기 판단 기준"],
   ];
   return indexes.map(([name, score, basis]) => {
     const status = scoreLabel(score);
@@ -351,7 +357,7 @@ function renderTable() {
       <td><strong>${item.name}</strong></td>
       <td>${item.pm10 ? Math.round(item.pm10) : "-"}</td>
       <td>${item.pm25 ? Math.round(item.pm25) : "-"}</td>
-      <td><span class="status-pill grade-${gradeKey}">${grade.label}</span></td>
+      <td><span class="status-pill grade-${gradeKey}">${gradeLabel(gradeKey)}</span></td>
     </tr>`;
   }).join("");
   els.rankingBody.querySelectorAll("tr").forEach((row) => {
@@ -361,27 +367,55 @@ function renderTable() {
 
 function renderHourlyChart() {
   const meta = METRIC_META[activeMetric];
-  const rows = hourlyData
-    .map((row) => ({ ...row, value: valueForMetric(row) }))
-    .filter((row) => row.value !== null && row.value !== undefined && row.value > 0)
-    .slice(0, 24)
-    .reverse();
+  const rows = buildHourlySeries(hourlyData).map((row) => ({ ...row, value: valueForMetric(row) }));
   els.hourlyLabel.textContent = `${selectedName} · ${meta.label}`;
   if (!rows.length) {
     els.hourlyChart.innerHTML = `<div class="empty-state">시간별 측정값을 확인 중입니다.</div>`;
     return;
   }
-  const max = Math.max(...rows.map((row) => row.value), meta.thresholds[1], 1);
+  const validValues = rows.map((row) => row.value).filter((value) => value !== null && value !== undefined && value > 0);
+  const max = Math.max(...validValues, meta.thresholds[1], 1);
   els.hourlyChart.innerHTML = rows.map((row) => {
+    if (!row.value || row.value <= 0) {
+      return `<button class="hour-bar empty" type="button" disabled title="${row.date} · 측정값 없음">
+        <span style="height:8%"></span>
+        <b>-</b>
+        <small>${row.hour}</small>
+      </button>`;
+    }
     const gradeKey = gradeForMetric(row.value);
     const height = clamp((row.value / max) * 100, 8, 100);
-    const hour = String(row.date || "").match(/(\d{2}):\d{2}/)?.[1] || "";
     return `<button class="hour-bar grade-${gradeKey}" type="button" title="${row.date} · ${formatMetricValue(row.value)}${meta.unit}">
       <span style="height:${height}%"></span>
       <b>${formatMetricValue(row.value)}</b>
-      <small>${hour}</small>
+      <small>${row.hour}</small>
     </button>`;
   }).join("");
+}
+
+function buildHourlySeries(rows) {
+  const parsed = rows
+    .map((row) => ({ ...row, time: parseDataTime(row.date) }))
+    .filter((row) => row.time)
+    .sort((a, b) => b.time - a.time);
+  if (!parsed.length) return [];
+  const byHour = new Map(parsed.map((row) => [hourKey(row.time), row]));
+  const latest = floorToHour(parsed[0].time);
+  return Array.from({ length: 24 }, (_, index) => {
+    const time = new Date(latest);
+    time.setHours(latest.getHours() - (23 - index));
+    const row = byHour.get(hourKey(time));
+    return row
+      ? { ...row, hour: String(time.getHours()).padStart(2, "0") }
+      : {
+        name: selectedName,
+        pm10: null,
+        pm25: null,
+        ozone: null,
+        date: formatChartTime(time),
+        hour: String(time.getHours()).padStart(2, "0"),
+      };
+  });
 }
 
 function renderForecastImage() {
@@ -421,7 +455,7 @@ function imageForForecast(item) {
 
 function framesForForecast(item) {
   if (!item) return [];
-  const frames = activeMetric === "pm25"
+  const sourceFrames = activeMetric === "pm25"
     ? [
       ["21시", item.imageUrl4],
       ["다음날 03시", item.imageUrl5],
@@ -438,12 +472,37 @@ function framesForForecast(item) {
     ["추가 예측 2", item.imageUrl8],
     ["추가 예측 3", item.imageUrl9],
   ];
-  return frames.filter(([, url]) => Boolean(url)).map(([label, url]) => ({ label, url }));
+  const frames = sourceFrames.filter(([, url]) => Boolean(url)).map(([label, url]) => ({ label, url }));
+  return expandForecastFramesHourly(frames);
+}
+
+function expandForecastFramesHourly(frames) {
+  if (frames.length < 2) return frames;
+  const parsed = frames
+    .map((frame) => ({ ...frame, time: forecastTimeFromUrl(frame.url) }))
+    .filter((frame) => frame.time);
+  if (parsed.length < 2) return frames;
+  const start = parsed[0].time;
+  const end = parsed[parsed.length - 1].time;
+  const template = parsed[0].url;
+  const hourlyFrames = [];
+  for (let time = new Date(start); time <= end; time.setHours(time.getHours() + 1)) {
+    hourlyFrames.push({
+      label: formatForecastFrameLabel(time),
+      url: replaceForecastTime(template, time),
+    });
+  }
+  return hourlyFrames.length ? hourlyFrames : frames;
 }
 
 function showForecastFrame() {
   const frame = forecastFrames[forecastFrameIndex];
   if (!frame) return;
+  els.forecastImage.onerror = () => {
+    if (forecastFrames.length < 2) return;
+    forecastFrameIndex = (forecastFrameIndex + 1) % forecastFrames.length;
+    showForecastFrame();
+  };
   els.forecastImage.src = frame.url;
   els.forecastFrameLabel.textContent = `${forecastFrameIndex + 1}/${forecastFrames.length} · ${frame.label}`;
   els.forecastDots.querySelectorAll("button").forEach((button, index) => {
@@ -546,7 +605,7 @@ function formatAccuracy(accuracy) {
 function describeLocation(match) {
   const distance = match.distance.toFixed(1);
   const accuracy = formatAccuracy(match.accuracy);
-  return `현재 위치를 ${match.name} 기준으로 반영했습니다. 측정소 중심까지 약 ${distance}km, 위치 정확도는 ${accuracy}입니다.`;
+  return `📍 현재 위치를 ${match.name} 기준으로 반영했습니다. 측정소 중심까지 약 ${distance}km, 위치 정확도는 ${accuracy}입니다.`;
 }
 
 function useCurrentLocation({ silent = false } = {}) {
@@ -574,7 +633,7 @@ function useCurrentLocation({ silent = false } = {}) {
         els.notice.hidden = true;
       }
       els.locationBtn.disabled = false;
-      els.locationBtn.textContent = `내 위치: ${match.name}`;
+      els.locationBtn.textContent = `📍 내 위치: ${match.name}`;
     },
     (error) => {
       const reason = error.code === error.PERMISSION_DENIED ? "위치 권한이 거부되었습니다." : "현재 위치를 확인하지 못했습니다.";
@@ -658,6 +717,48 @@ function formatDate(value) {
     return `${value.slice(0, 4)}.${value.slice(4, 6)}.${value.slice(6, 8)} ${value.slice(8, 10)}:${value.slice(10, 12)}`;
   }
   return value || new Date().toLocaleString("ko-KR");
+}
+
+function parseDataTime(value) {
+  const match = String(value || "").match(/(\d{4})[-.](\d{2})[-.](\d{2})\s+(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const [, year, month, day, hour, minute] = match;
+  return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+}
+
+function floorToHour(date) {
+  const next = new Date(date);
+  next.setMinutes(0, 0, 0);
+  return next;
+}
+
+function hourKey(date) {
+  return `${formatLocalDate(date)} ${String(date.getHours()).padStart(2, "0")}`;
+}
+
+function formatChartTime(date) {
+  return `${formatLocalDate(date)} ${String(date.getHours()).padStart(2, "0")}:00`;
+}
+
+function forecastTimeFromUrl(url) {
+  const match = String(url || "").match(/(\d{10})(?=\.png(?:\?|$))/);
+  if (!match) return null;
+  const stamp = match[1];
+  return new Date(
+    Number(stamp.slice(0, 4)),
+    Number(stamp.slice(4, 6)) - 1,
+    Number(stamp.slice(6, 8)),
+    Number(stamp.slice(8, 10)),
+  );
+}
+
+function replaceForecastTime(url, date) {
+  const stamp = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}${String(date.getHours()).padStart(2, "0")}`;
+  return String(url || "").replace(/(\d{10})(?=\.png(?:\?|$))/, stamp);
+}
+
+function formatForecastFrameLabel(date) {
+  return `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}시`;
 }
 
 function formatLocalDate(date) {

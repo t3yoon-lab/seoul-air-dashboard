@@ -700,6 +700,15 @@ h1 {
 .hour-bar.grade-bad { --bar-color: var(--color-warning); }
 .hour-bar.grade-veryBad { --bar-color: var(--color-danger); }
 .hour-bar.grade-unknown { --bar-color: #d2d2d7; }
+.hour-bar.empty {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.hour-bar.empty span {
+  background: #d2d2d7;
+  box-shadow: none;
+}
 
 .forecast-visual {
   position: relative;
