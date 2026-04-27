@@ -48,7 +48,22 @@
       <section class="air-layout" aria-label="서울 대기환경정보">
         <article class="map-card" aria-label="서울 자치구별 농도">
           <div class="seoul-map-wrap">
-            <div class="river" aria-hidden="true"></div>
+            <svg class="seoul-outline-svg" viewBox="0 0 800 620" aria-hidden="true">
+              <defs>
+                <linearGradient id="seoulFill" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#d8f7df" />
+                  <stop offset="55%" stop-color="#c3efcf" />
+                  <stop offset="100%" stop-color="#b4e7c5" />
+                </linearGradient>
+                <filter id="mapShadow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#60728c" flood-opacity="0.16" />
+                </filter>
+              </defs>
+              <path class="seoul-outline" filter="url(#mapShadow)" d="M72 348 L116 238 L186 144 L288 130 L338 53 L430 20 L537 58 L610 130 L704 178 L752 266 L714 350 L758 418 L684 493 L586 502 L517 562 L417 580 L330 548 L247 580 L178 512 L96 488 L50 420 Z" />
+              <path class="seoul-river" d="M70 392 C158 346 244 334 333 340 C424 346 495 323 584 296 C644 278 696 278 744 294" />
+              <path class="seoul-river-edge" d="M70 426 C163 378 255 368 344 374 C431 380 506 357 596 330 C653 312 700 313 744 328" />
+              <path class="seoul-boundary" d="M224 186 L247 580 M304 164 L330 548 M430 23 L417 580 M533 65 L586 502 M146 255 L697 352 M103 488 L680 185 M178 512 L588 142" />
+            </svg>
             <div id="districtMap" class="district-map" aria-label="서울 자치구 지도"></div>
             <div class="map-unit">
               단위 <span id="unitLabel">㎍/㎥</span><br />

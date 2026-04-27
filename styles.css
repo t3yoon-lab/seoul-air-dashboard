@@ -213,26 +213,53 @@ h1 {
   background: var(--map-bg);
 }
 
-.river {
+.seoul-outline-svg {
   position: absolute;
-  left: 5%;
-  right: 5%;
-  top: 54%;
-  height: 58px;
-  transform: rotate(-11deg);
-  border: 1px solid rgba(91, 155, 206, 0.16);
-  background: rgba(190, 226, 247, 0.88);
+  inset: 26px 28px 34px;
+  width: calc(100% - 56px);
+  height: calc(100% - 60px);
+}
+
+.seoul-outline {
+  fill: url("#seoulFill");
+  stroke: rgba(255, 255, 255, 0.95);
+  stroke-width: 5;
+  stroke-linejoin: round;
+}
+
+.seoul-river,
+.seoul-river-edge {
+  fill: none;
+  stroke: rgba(183, 224, 245, 0.92);
+  stroke-linecap: round;
+}
+
+.seoul-river {
+  stroke-width: 34;
+}
+
+.seoul-river-edge {
+  stroke-width: 30;
+  stroke: rgba(205, 236, 250, 0.9);
+}
+
+.seoul-boundary {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.42);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 12 14;
 }
 
 .district-map {
   position: absolute;
-  inset: 36px 44px 64px;
+  inset: 44px 54px 76px;
 }
 
 .district {
   position: absolute;
-  width: 92px;
-  min-height: 64px;
+  width: 84px;
+  min-height: 56px;
   padding: 0;
   border: 0;
   background: transparent !important;
@@ -241,17 +268,7 @@ h1 {
 }
 
 .district::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 22px;
-  width: 104px;
-  height: 76px;
-  border: 2px solid rgba(255, 255, 255, 0.95);
-  background: var(--area-color, #bdf0cd);
-  clip-path: polygon(16% 8%, 72% 0, 96% 26%, 88% 78%, 45% 100%, 4% 70%);
-  transform: translate(-50%, -50%) rotate(var(--tilt, 0deg));
-  opacity: 0.8;
+  display: none;
 }
 
 .district:hover,
@@ -261,9 +278,7 @@ h1 {
 
 .district.active::before,
 .district:hover::before {
-  outline: 3px solid rgba(0, 0, 0, 0.16);
-  outline-offset: 3px;
-  opacity: 1;
+  display: none;
 }
 
 .district span,
@@ -274,24 +289,30 @@ h1 {
 }
 
 .district span {
-  margin-bottom: 4px;
+  margin-bottom: 5px;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.95),
+    0 -1px 0 rgba(255, 255, 255, 0.95),
+    1px 0 0 rgba(255, 255, 255, 0.95),
+    -1px 0 0 rgba(255, 255, 255, 0.95);
   color: #353535;
-  font-size: 21px;
-  font-weight: 500;
+  font-size: 19px;
+  font-weight: 700;
   line-height: 1;
 }
 
 .district small {
   width: fit-content;
-  min-width: 60px;
+  min-width: 56px;
   margin: 0 auto;
   padding: 5px 12px;
   border-radius: 999px;
   background: var(--badge-color, var(--normal));
   color: #fff;
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 900;
   line-height: 1;
+  box-shadow: 0 6px 12px rgba(27, 82, 53, 0.18);
 }
 
 .district.current small {
@@ -689,6 +710,10 @@ tr:hover td {
   }
 
   .river {
+    display: none;
+  }
+
+  .seoul-outline-svg {
     display: none;
   }
 
