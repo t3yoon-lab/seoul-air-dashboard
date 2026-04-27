@@ -2,6 +2,7 @@ const DEFAULT_API_KEY = "745b5fafc3e94dadc4de9d5ef781029c0d717ca5a885b05b914720e
 const API_BASE_URL = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty";
 const STATION_HISTORY_URL = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty";
 const FORECAST_URL = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMinuDustFrcstDspth";
+const DONG_GEOJSON_URL = "./data/seoul-dongs.geojson";
 const FORECAST_INTERVAL_MS = 1800;
 
 const POSITIONS = {
@@ -61,6 +62,9 @@ let forecastFrames = [];
 let forecastFrameIndex = 0;
 let forecastTimer = null;
 let forecastPlaying = true;
+let forecastImageLayer = 0;
+let dongFeatures = null;
+let dongFeaturesPromise = null;
 
 const els = {
   updatedAt: document.querySelector("#updatedAt"),
@@ -94,6 +98,7 @@ const els = {
   hourlyChart: document.querySelector("#hourlyChart"),
   hourlyLabel: document.querySelector("#hourlyLabel"),
   forecastImage: document.querySelector("#forecastImage"),
+  forecastImageAlt: document.querySelector("#forecastImageAlt"),
   forecastPlaceholder: document.querySelector("#forecastPlaceholder"),
   forecastIssuedAt: document.querySelector("#forecastIssuedAt"),
   forecastPlayBtn: document.querySelector("#forecastPlayBtn"),
@@ -104,6 +109,7 @@ const els = {
   metricTabs: document.querySelectorAll(".metric-tab"),
   dayTabs: document.querySelectorAll(".day-tab"),
 };
+els.forecastImages = [els.forecastImage, els.forecastImageAlt];
 
 function toNumber(value) {
   const number = Number.parseFloat(value);
@@ -210,7 +216,7 @@ function renderDetail() {
   const grade = GRADE_INFO[gradeKey];
   els.selectedName.textContent = item.name;
   if (locationMatch?.name === item.name) {
-    els.locationNote.textContent = `내 위치 기준 ${item.name} · 측정소 중심 약 ${locationMatch.distance.toFixed(1)}km · 위치 정확도 ${formatAccuracy(locationMatch.accuracy)}`;
+    els.locationNote.textContent = `내 위치 기준 ${locationDisplayName(locationMatch)} · ${item.name} 측정소 중심 약 ${locationMatch.distance.toFixed(1)}km · 위치 정확도 ${formatAccuracy(locationMatch.accuracy)}`;
     els.locationNote.hidden = false;
   } else {
     els.locationNote.hidden = true;
@@ -468,10 +474,18 @@ function setForecastFrames(frames) {
   forecastFrames = frames;
   if (forecastFrameIndex >= forecastFrames.length) forecastFrameIndex = 0;
   const frame = forecastFrames[forecastFrameIndex];
-  els.forecastImage.hidden = !frame;
+  els.forecastImages.forEach((image) => {
+    image.hidden = !frame;
+    if (!frame) {
+      image.classList.remove("active");
+      image.removeAttribute("src");
+      image.dataset.url = "";
+    }
+  });
   els.forecastPlaceholder.hidden = Boolean(frame);
   els.forecastFrameLabel.textContent = frame ? frame.label : "예측 영상 없음";
   els.forecastPlayBtn.hidden = forecastFrames.length < 2;
+  preloadForecastFrames(forecastFrames);
   els.forecastDots.innerHTML = forecastFrames.map((_, index) => (
     `<button class="${index === forecastFrameIndex ? "active" : ""}" type="button" aria-label="${index + 1}번째 예측 영상"></button>`
   )).join("");
@@ -484,6 +498,14 @@ function setForecastFrames(frames) {
   });
   if (frame) showForecastFrame();
   restartForecastAnimation();
+}
+
+function preloadForecastFrames(frames) {
+  [...new Set(frames.map((frame) => frame.url).filter(Boolean))].forEach((url) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.src = url;
+  });
 }
 
 function imageForForecast(item) {
@@ -546,16 +568,48 @@ function nearestForecastSource(time, frames) {
 function showForecastFrame() {
   const frame = forecastFrames[forecastFrameIndex];
   if (!frame) return;
-  els.forecastImage.onerror = null;
-  els.forecastImage.classList.remove("active");
-  els.forecastImage.src = frame.url;
-  window.requestAnimationFrame(() => els.forecastImage.classList.add("active"));
   els.forecastFrameLabel.textContent = `${forecastFrameIndex + 1}/${forecastFrames.length} · ${frame.label}`;
   const progress = forecastFrames.length > 1 ? ((forecastFrameIndex + 1) / forecastFrames.length) * 100 : 100;
   els.forecastProgress.style.setProperty("--progress", `${progress}%`);
   els.forecastDots.querySelectorAll("button").forEach((button, index) => {
     button.classList.toggle("active", index === forecastFrameIndex);
   });
+  const current = els.forecastImages[forecastImageLayer];
+  const incoming = els.forecastImages[1 - forecastImageLayer];
+  if (current.dataset.url === frame.url && current.classList.contains("active")) {
+    applyForecastDrift(current, forecastFrameIndex);
+    return;
+  }
+  incoming.onerror = null;
+  incoming.hidden = false;
+  incoming.classList.remove("active");
+  incoming.dataset.url = frame.url;
+  incoming.src = frame.url;
+  applyForecastDrift(incoming, forecastFrameIndex);
+  window.requestAnimationFrame(() => {
+    incoming.classList.add("active");
+    current.classList.remove("active");
+    current.setAttribute("aria-hidden", "true");
+    current.alt = "";
+    incoming.removeAttribute("aria-hidden");
+    incoming.alt = "AirKorea 대기질 예측 영상";
+    forecastImageLayer = 1 - forecastImageLayer;
+    window.setTimeout(() => {
+      if (!current.classList.contains("active")) current.hidden = true;
+    }, 820);
+  });
+}
+
+function applyForecastDrift(image, index) {
+  const drift = [
+    [-0.6, -0.4, 1.004],
+    [0.4, -0.2, 1.008],
+    [0.6, 0.3, 1.006],
+    [-0.3, 0.5, 1.01],
+  ][index % 4];
+  image.style.setProperty("--forecast-x", `${drift[0]}%`);
+  image.style.setProperty("--forecast-y", `${drift[1]}%`);
+  image.style.setProperty("--forecast-scale", drift[2]);
 }
 
 function restartForecastAnimation() {
@@ -596,6 +650,91 @@ function nearestDistrict(latitude, longitude, accuracy = null) {
   return Object.entries(DISTRICT_CENTERS)
     .map(([name, [lat, lng]]) => ({ name, distance: distanceKm(latitude, longitude, lat, lng), latitude, longitude, accuracy }))
     .sort((a, b) => a.distance - b.distance)[0];
+}
+
+function locationDisplayName(match) {
+  return match?.dong ? `${match.name} ${match.dong}` : match?.name || "서울";
+}
+
+async function enrichLocationWithDong(match) {
+  const feature = await findDongForPoint(match.latitude, match.longitude);
+  if (!feature) return match;
+  const district = feature.properties?.district || match.name;
+  const dong = feature.properties?.dong || "";
+  const center = DISTRICT_CENTERS[district];
+  return {
+    ...match,
+    name: district,
+    dong,
+    neighborhood: feature.properties?.name || `${district} ${dong}`.trim(),
+    distance: center ? distanceKm(match.latitude, match.longitude, center[0], center[1]) : match.distance,
+  };
+}
+
+async function findDongForPoint(latitude, longitude) {
+  const features = await loadDongFeatures();
+  return features.find((feature) => {
+    const [minLng, minLat, maxLng, maxLat] = feature.bounds;
+    return longitude >= minLng && longitude <= maxLng
+      && latitude >= minLat && latitude <= maxLat
+      && featureContainsPoint(feature, longitude, latitude);
+  });
+}
+
+async function loadDongFeatures() {
+  if (dongFeatures) return dongFeatures;
+  if (!dongFeaturesPromise) {
+    dongFeaturesPromise = fetch(DONG_GEOJSON_URL)
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((json) => json.features.map((feature) => ({ ...feature, bounds: geometryBounds(feature.geometry) })))
+      .catch(() => []);
+  }
+  dongFeatures = await dongFeaturesPromise;
+  return dongFeatures;
+}
+
+function geometryBounds(geometry) {
+  const bounds = [Infinity, Infinity, -Infinity, -Infinity];
+  const visit = (coordinates) => {
+    if (!Array.isArray(coordinates)) return;
+    if (typeof coordinates[0] === "number") {
+      const [lng, lat] = coordinates;
+      bounds[0] = Math.min(bounds[0], lng);
+      bounds[1] = Math.min(bounds[1], lat);
+      bounds[2] = Math.max(bounds[2], lng);
+      bounds[3] = Math.max(bounds[3], lat);
+      return;
+    }
+    coordinates.forEach(visit);
+  };
+  visit(geometry?.coordinates);
+  return bounds;
+}
+
+function featureContainsPoint(feature, longitude, latitude) {
+  const { type, coordinates } = feature.geometry || {};
+  if (type === "Polygon") return polygonContainsPoint(coordinates, longitude, latitude);
+  if (type === "MultiPolygon") return coordinates.some((polygon) => polygonContainsPoint(polygon, longitude, latitude));
+  return false;
+}
+
+function polygonContainsPoint(polygon, longitude, latitude) {
+  if (!pointInRing(polygon[0], longitude, latitude)) return false;
+  return !polygon.slice(1).some((ring) => pointInRing(ring, longitude, latitude));
+}
+
+function pointInRing(ring, longitude, latitude) {
+  let inside = false;
+  for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index++) {
+    const [x1, y1] = ring[index];
+    const [x2, y2] = ring[previous];
+    const crosses = (y1 > latitude) !== (y2 > latitude);
+    if (crosses && longitude < ((x2 - x1) * (latitude - y1)) / (y2 - y1) + x1) inside = !inside;
+  }
+  return inside;
 }
 
 function showNotice(message) {
@@ -653,7 +792,7 @@ function formatAccuracy(accuracy) {
 function describeLocation(match) {
   const distance = match.distance.toFixed(1);
   const accuracy = formatAccuracy(match.accuracy);
-  return `📍 현재 위치를 ${match.name} 기준으로 반영했습니다. 측정소 중심까지 약 ${distance}km, 위치 정확도는 ${accuracy}입니다.`;
+  return `📍 현재 위치는 ${locationDisplayName(match)}로 확인했고, 대기 측정값은 ${match.name} 측정소 기준으로 반영했습니다. 측정소 중심까지 약 ${distance}km, 위치 정확도는 ${accuracy}입니다.`;
 }
 
 function useCurrentLocation({ silent = false } = {}) {
@@ -664,9 +803,9 @@ function useCurrentLocation({ silent = false } = {}) {
   els.locationBtn.disabled = true;
   els.locationBtn.textContent = "확인 중";
   navigator.geolocation.getCurrentPosition(
-    (position) => {
+    async (position) => {
       const { latitude, longitude } = position.coords;
-      const match = nearestDistrict(latitude, longitude, position.coords.accuracy);
+      const match = await enrichLocationWithDong(nearestDistrict(latitude, longitude, position.coords.accuracy));
       const hasData = airData.some((item) => item.name === match.name);
       locationMatch = match;
       if (hasData) selectDistrict(match.name);
@@ -681,7 +820,7 @@ function useCurrentLocation({ silent = false } = {}) {
         els.notice.hidden = true;
       }
       els.locationBtn.disabled = false;
-      els.locationBtn.textContent = `📍 내 위치: ${match.name}`;
+      els.locationBtn.textContent = `📍 내 위치: ${locationDisplayName(match)}`;
     },
     (error) => {
       const reason = error.code === error.PERMISSION_DENIED ? "위치 권한이 거부되었습니다." : "현재 위치를 확인하지 못했습니다.";
