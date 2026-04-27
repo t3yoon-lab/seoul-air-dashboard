@@ -1,6 +1,8 @@
 const API_KEY_STORAGE_KEY = "seoul-air-dashboard-api-key";
 const DEFAULT_API_KEY = "745b5fafc3e94dadc4de9d5ef781029c0d717ca5a885b05b914720e256ee7161";
 const API_BASE_URL = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty";
+const STATION_HISTORY_URL = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty";
+const FORECAST_URL = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMinuDustFrcstDspth";
 
 const POSITIONS = {
   종로구: [47, 31], 중구: [50, 42], 용산구: [47, 55], 성동구: [61, 48], 광진구: [72, 48],
@@ -52,6 +54,9 @@ let selectedName = "종로구";
 let activeMetric = "pm10";
 let activeDay = "today";
 let locationMatch = null;
+let hourlyData = [];
+let forecastItems = [];
+let hourlyRequestId = 0;
 
 const els = {
   updatedAt: document.querySelector("#updatedAt"),
@@ -83,6 +88,12 @@ const els = {
   afternoonRange: document.querySelector("#afternoonRange"),
   morningScale: document.querySelector("#morningScale"),
   afternoonScale: document.querySelector("#afternoonScale"),
+  hourlyChart: document.querySelector("#hourlyChart"),
+  hourlyLabel: document.querySelector("#hourlyLabel"),
+  forecastImage: document.querySelector("#forecastImage"),
+  forecastPlaceholder: document.querySelector("#forecastPlaceholder"),
+  forecastIssuedAt: document.querySelector("#forecastIssuedAt"),
+  forecastSummary: document.querySelector("#forecastSummary"),
   metricTabs: document.querySelectorAll(".metric-tab"),
   dayTabs: document.querySelectorAll(".day-tab"),
 };
@@ -107,6 +118,12 @@ function valueForMetric(item, metric = activeMetric) {
   if (metric === "o3") return item.ozone;
   if (metric === "dust") return item.pm10;
   return item.pm10;
+}
+
+function forecastCodeForMetric(metric = activeMetric) {
+  if (metric === "pm25") return "PM25";
+  if (metric === "o3") return "O3";
+  return "PM10";
 }
 
 function gradeForMetric(value, metric = activeMetric) {
@@ -198,6 +215,8 @@ function renderDetail() {
   els.adviceText.textContent = adviceForGrade(gradeKey);
   renderReports(item);
   renderLifeIndexes(item);
+  renderHourlyChart();
+  renderForecastImage();
 }
 
 function adviceForGrade(gradeKey) {
@@ -214,12 +233,12 @@ function renderReports(item) {
 }
 
 function renderSingleReport(item, period, messageEl, rangeEl, scaleEl) {
-  const value = adjustedValue(valueForMetric(item), period);
-  const gradeKey = gradeForMetric(value);
+  const forecast = activeDay === "today" ? null : forecastForActiveDay();
+  const gradeKey = forecast ? gradeKeyFromLabel(seoulGradeFromForecast(forecast)) : gradeForMetric(adjustedValue(valueForMetric(item), period));
   const info = GRADE_INFO[gradeKey];
   const order = ["good", "normal", "bad", "veryBad"];
   const range = gradeKey === "unknown" ? "-" : METRIC_META[activeMetric].ranges[order.indexOf(gradeKey)];
-  messageEl.textContent = info.message;
+  messageEl.textContent = forecast ? forecastMessage(forecast, period, info.label) : info.message;
   messageEl.className = `report-message ${gradeKey}`;
   rangeEl.textContent = range;
   rangeEl.style.background = info.color;
@@ -228,6 +247,41 @@ function renderSingleReport(item, period, messageEl, rangeEl, scaleEl) {
     const active = gradeKey === segmentKey && (gradeKey !== "bad" || index === 2);
     return `<span class="scale-segment ${active ? "active" : ""}" style="--scale-color:${info.color}">${label}</span>`;
   }).join("");
+}
+
+function gradeKeyFromLabel(label = "") {
+  if (label.includes("매우")) return "veryBad";
+  if (label.includes("나쁨")) return "bad";
+  if (label.includes("보통")) return "normal";
+  if (label.includes("좋음")) return "good";
+  return "unknown";
+}
+
+function seoulGradeFromForecast(item) {
+  const seoul = item?.informGrade?.split(",").find((part) => part.trim().startsWith("서울"));
+  return seoul?.split(":")[1]?.trim() || "";
+}
+
+function forecastTargetDate() {
+  const date = new Date();
+  const offset = activeDay === "after" ? 2 : activeDay === "tomorrow" ? 1 : 0;
+  date.setDate(date.getDate() + offset);
+  return formatLocalDate(date);
+}
+
+function forecastForActiveDay(metric = activeMetric) {
+  const code = forecastCodeForMetric(metric);
+  const target = forecastTargetDate();
+  return forecastItems
+    .filter((item) => item.informCode === code && item.informData === target)
+    .sort((a, b) => String(b.dataTime).localeCompare(String(a.dataTime)))[0];
+}
+
+function forecastMessage(item, period, label) {
+  const dayLabel = activeDay === "after" ? "모레" : "내일";
+  const timeLabel = period === "afternoon" ? "오후" : "오전";
+  const issued = item?.dataTime ? ` (${item.dataTime})` : "";
+  return `${dayLabel} ${timeLabel} 서울 예보는 ${label}이에요.${issued}`;
 }
 
 function clamp(value, min = 0, max = 100) {
@@ -299,6 +353,51 @@ function renderTable() {
   });
 }
 
+function renderHourlyChart() {
+  const meta = METRIC_META[activeMetric];
+  const rows = hourlyData
+    .map((row) => ({ ...row, value: valueForMetric(row) }))
+    .filter((row) => row.value !== null && row.value !== undefined && row.value > 0)
+    .slice(0, 24)
+    .reverse();
+  els.hourlyLabel.textContent = `${selectedName} · ${meta.label}`;
+  if (!rows.length) {
+    els.hourlyChart.innerHTML = `<div class="empty-state">시간별 측정값을 확인 중입니다.</div>`;
+    return;
+  }
+  const max = Math.max(...rows.map((row) => row.value), meta.thresholds[1], 1);
+  els.hourlyChart.innerHTML = rows.map((row) => {
+    const gradeKey = gradeForMetric(row.value);
+    const height = clamp((row.value / max) * 100, 8, 100);
+    const hour = String(row.date || "").match(/(\d{2}):\d{2}/)?.[1] || "";
+    return `<button class="hour-bar grade-${gradeKey}" type="button" title="${row.date} · ${formatMetricValue(row.value)}${meta.unit}">
+      <span style="height:${height}%"></span>
+      <b>${formatMetricValue(row.value)}</b>
+      <small>${hour}</small>
+    </button>`;
+  }).join("");
+}
+
+function renderForecastImage() {
+  const item = forecastForActiveDay() || forecastForActiveDay(activeMetric === "pm25" ? "pm10" : "pm25");
+  const imageUrl = imageForForecast(item);
+  const grade = seoulGradeFromForecast(item);
+  els.forecastIssuedAt.textContent = item?.dataTime || "예보 확인 중";
+  els.forecastSummary.textContent = item
+    ? `${item.informData} 서울 ${METRIC_META[activeMetric].label} 예보는 ${grade || "확인 중"}입니다. ${item.informOverall || ""}`
+    : "예보통보 API에서 내일·모레 자료를 확인하지 못했습니다.";
+  els.forecastImage.hidden = !imageUrl;
+  els.forecastPlaceholder.hidden = Boolean(imageUrl);
+  if (imageUrl) els.forecastImage.src = imageUrl;
+}
+
+function imageForForecast(item) {
+  if (!item) return "";
+  if (activeDay === "after") return item.imageUrl9 || item.imageUrl6 || item.imageUrl3 || item.imageUrl1 || "";
+  if (activeDay === "tomorrow") return item.imageUrl6 || item.imageUrl3 || item.imageUrl2 || item.imageUrl1 || "";
+  return item.imageUrl1 || item.imageUrl2 || item.imageUrl3 || "";
+}
+
 function renderAll() {
   buildMap();
   buildSelect();
@@ -311,6 +410,7 @@ function selectDistrict(name) {
   selectedName = name;
   els.districtSelect.value = name;
   renderAll();
+  fetchHourlyData(name);
 }
 
 function distanceKm(fromLat, fromLng, toLat, toLng) {
@@ -348,6 +448,31 @@ function buildApiUrl(apiKey) {
     ver: "1.0",
   });
   return `${API_BASE_URL}?${params.toString()}`;
+}
+
+function buildStationHistoryUrl(apiKey, stationName) {
+  const params = new URLSearchParams({
+    serviceKey: apiKey,
+    returnType: "json",
+    numOfRows: "24",
+    pageNo: "1",
+    stationName,
+    dataTerm: "DAILY",
+    ver: "1.0",
+  });
+  return `${STATION_HISTORY_URL}?${params.toString()}`;
+}
+
+function buildForecastUrl(apiKey) {
+  const params = new URLSearchParams({
+    serviceKey: apiKey,
+    returnType: "json",
+    numOfRows: "50",
+    pageNo: "1",
+    searchDate: formatLocalDate(new Date()),
+    InformCode: forecastCodeForMetric(),
+  });
+  return `${FORECAST_URL}?${params.toString()}`;
 }
 
 function setApiKey() {
@@ -413,6 +538,8 @@ async function fetchAirData() {
     selectedName = airData.some((item) => item.name === selectedName) ? selectedName : airData[0].name;
     const newest = airData.find((row) => row.date)?.date || new Date().toLocaleString("ko-KR");
     els.updatedAt.textContent = formatDate(newest);
+    await fetchForecastData();
+    fetchHourlyData(selectedName);
   } catch (error) {
     airData = FALLBACK;
     els.updatedAt.textContent = "예시 데이터";
@@ -423,11 +550,47 @@ async function fetchAirData() {
   }
 }
 
+async function fetchHourlyData(name = selectedName) {
+  const requestId = ++hourlyRequestId;
+  try {
+    const response = await fetch(buildStationHistoryUrl(getApiKey(), name), { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const json = await response.json();
+    const rows = json.response?.body?.items || [];
+    const normalized = rows.map((row) => normalizeRow({ ...row, stationName: name })).filter((row) => row.date);
+    if (requestId !== hourlyRequestId) return;
+    hourlyData = normalized;
+  } catch (error) {
+    if (requestId !== hourlyRequestId) return;
+    hourlyData = [];
+  } finally {
+    if (requestId === hourlyRequestId) renderHourlyChart();
+  }
+}
+
+async function fetchForecastData() {
+  try {
+    const response = await fetch(buildForecastUrl(getApiKey()), { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const json = await response.json();
+    forecastItems = json.response?.body?.items || [];
+  } catch (error) {
+    forecastItems = [];
+  }
+}
+
 function formatDate(value) {
   if (/^\d{12}$/.test(value)) {
     return `${value.slice(0, 4)}.${value.slice(4, 6)}.${value.slice(6, 8)} ${value.slice(8, 10)}:${value.slice(10, 12)}`;
   }
   return value || new Date().toLocaleString("ko-KR");
+}
+
+function formatLocalDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 els.refreshBtn.addEventListener("click", fetchAirData);
@@ -439,7 +602,7 @@ els.metricTabs.forEach((button) => {
   button.addEventListener("click", () => {
     activeMetric = button.dataset.metric;
     els.metricTabs.forEach((tab) => tab.classList.toggle("active", tab === button));
-    renderAll();
+    fetchForecastData().then(() => renderAll());
   });
 });
 els.dayTabs.forEach((button) => {
