@@ -1,4 +1,5 @@
 const API_KEY_STORAGE_KEY = "seoul-air-dashboard-api-key";
+const DEFAULT_API_KEY = "745b5fafc3e94dadc4de9d5ef781029c0d717ca5a885b05b914720e256ee7161";
 const API_BASE_URL = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty";
 
 const POSITIONS = {
@@ -334,7 +335,7 @@ function showNotice(message) {
 }
 
 function getApiKey() {
-  return localStorage.getItem(API_KEY_STORAGE_KEY) || "";
+  return localStorage.getItem(API_KEY_STORAGE_KEY) || DEFAULT_API_KEY;
 }
 
 function buildApiUrl(apiKey) {
@@ -351,7 +352,7 @@ function buildApiUrl(apiKey) {
 
 function setApiKey() {
   const current = getApiKey();
-  const next = window.prompt("공공데이터포털 AirKorea API 키를 입력하세요. 이 키는 이 브라우저에만 저장됩니다.", current);
+  const next = window.prompt("공공데이터포털 AirKorea API 키를 입력하세요. 비워두면 기본 키를 사용합니다.", current);
   if (next === null) return;
   const trimmed = next.trim();
   if (trimmed) {
@@ -359,7 +360,7 @@ function setApiKey() {
     showNotice("API 키를 저장했습니다. 실시간 서울 대기질을 다시 불러옵니다.");
   } else {
     localStorage.removeItem(API_KEY_STORAGE_KEY);
-    showNotice("API 키를 삭제했습니다. 예시 데이터로 표시합니다.");
+    showNotice("저장된 API 키를 삭제했습니다. 기본 키로 실시간 서울 대기질을 다시 불러옵니다.");
   }
   fetchAirData();
 }
@@ -402,7 +403,6 @@ async function fetchAirData() {
   els.notice.hidden = true;
   try {
     const apiKey = getApiKey();
-    if (!apiKey) throw new Error("API 키가 설정되지 않았습니다. 상단의 API 키 버튼을 눌러 키를 저장하세요.");
     const response = await fetch(buildApiUrl(apiKey), { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const json = await response.json();
